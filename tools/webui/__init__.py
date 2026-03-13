@@ -189,7 +189,6 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
 
                         with gr.Tab(label="🎙️ Voice"):
                             reference_id = gr.Textbox(label="Reference ID", placeholder="Leave empty to use gallery/uploaded audio", visible=False)
-                            use_memory_cache = gr.Radio(label="Use Memory Cache", choices=["on", "off"], value="on")
 
                             with gr.Tabs():
 
@@ -282,6 +281,8 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
             [reference_audio, reference_text, save_name, save_desc, save_pub],
             [save_status, saved_dropdown],
         )
+
+        use_memory_cache = gr.State("on")
 
         # Generate
         generate.click(
