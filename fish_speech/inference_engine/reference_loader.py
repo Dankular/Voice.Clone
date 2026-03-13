@@ -30,12 +30,9 @@ class ReferenceLoader:
         self.decoder_model: DAC
         self.encode_reference: Callable
 
-        # Define the torchaudio backend (list_audio_backends removed in torchaudio 2.10)
-        try:
-            backends = torchaudio.list_audio_backends()
-            self.backend = "ffmpeg" if "ffmpeg" in backends else "soundfile"
-        except AttributeError:
-            self.backend = "soundfile"
+        # torchaudio 2.10+ auto-selects backend (torchcodec/ffmpeg/soundfile)
+        # Do not hardcode backend="soundfile" as it cannot decode MP3
+        self.backend = None
 
     def load_by_id(
         self,
@@ -114,7 +111,7 @@ class ReferenceLoader:
             audio_data = reference_audio
             reference_audio = io.BytesIO(audio_data)
 
-        waveform, original_sr = torchaudio.load(reference_audio, backend=self.backend)
+        waveform, original_sr = torchaudio.load(reference_audio)
 
         if waveform.shape[0] > 1:
             waveform = torch.mean(waveform, dim=0, keepdim=True)
