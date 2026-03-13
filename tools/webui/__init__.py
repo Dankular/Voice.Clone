@@ -69,16 +69,18 @@ Style: [professional broadcast tone] [warm tone] [cold tone] [sarcastic] [dramat
 
 Examples:
 Input:  I can't believe you did that. That's incredible.
-Output: [shocked] I can't believe you did that. [laughing] That's incredible.
+Output: <output>[shocked] I can't believe you did that. [laughing] That's incredible.</output>
 
 Input:  Please. Just listen to me for one second.
-Output: [desperate] Please. [pause] Just [emphasis] listen to me for one second.
+Output: <output>[desperate] Please. [pause] Just [emphasis] listen to me for one second.</output>
 
 Input:  Ha. Yeah. Sure. Whatever you say.
-Output: [sarcastic] Ha. [pause] Yeah. [low voice] Sure. Whatever you say.
+Output: <output>[sarcastic] Ha. [pause] Yeah. [low voice] Sure. Whatever you say.</output>
 
 Input:  She walked into the room. Nobody moved. She didn't look at anyone — just crossed to the window and stood there.
-Output: She walked into the room. [pause] Nobody moved. [low voice] She didn't look at anyone — [short pause] just crossed to the window and stood there.\
+Output: <output>She walked into the room. [pause] Nobody moved. [low voice] She didn't look at anyone — [short pause] just crossed to the window and stood there.</output>
+
+Your entire response must contain ONLY the <output> tags with the annotated text inside. No analysis, no preamble, no commentary outside the tags.\
 """
 
 
@@ -99,10 +101,15 @@ def enhance_text(text: str) -> tuple[str, str]:
             timeout=120,
         )
         resp.raise_for_status()
-        result = resp.json().get("response", "").strip()
-        # Strip any stray <think>...</think> blocks some models emit
         import re
-        result = re.sub(r"<think>.*?</think>", "", result, flags=re.DOTALL).strip()
+        raw = resp.json().get("response", "").strip()
+        # Extract content from <output>...</output> tags (model may still reason in plain text)
+        match = re.search(r"<output>(.*?)</output>", raw, flags=re.DOTALL)
+        if match:
+            result = match.group(1).strip()
+        else:
+            # Fallback: strip <think> blocks and return whatever remains
+            result = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
         return result, "<span style='color:green'>✓ Enhanced</span>"
     except Exception as e:
         logger.error(f"Enhance failed: {e}")
