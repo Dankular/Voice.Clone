@@ -13,7 +13,7 @@ from loguru import logger
 from fish_speech.i18n import i18n
 from tools.webui.variables import HEADER_MD, TEXTBOX_PLACEHOLDER
 
-_OLLAMA_MODEL = "qwen3:4b"
+_OLLAMA_MODEL = "qwen2.5:3b"
 _ENHANCE_SYSTEM = """\
 You are an expert speech director and prosody annotator for a high-fidelity text-to-speech system (Fish Audio S2 Pro).
 
@@ -95,7 +95,6 @@ def enhance_text(text: str) -> tuple[str, str]:
                 "system": _ENHANCE_SYSTEM,
                 "prompt": text,
                 "stream": False,
-                "think": False,
                 "options": {"num_ctx": 4096, "temperature": 0.4},
             },
             timeout=120,
