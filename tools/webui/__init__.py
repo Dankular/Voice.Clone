@@ -179,10 +179,27 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
             js="() => {const params = new URLSearchParams(window.location.search);if (!params.has('__theme')) {params.set('__theme', '%s');window.location.search = params.toString();}}" % theme,
         )
 
+        _TAGS = [
+            "pause", "short pause", "emphasis", "whisper", "low voice", "loud", "volume up", "volume down",
+            "laughing", "chuckle", "chuckling", "laughing tone", "audience laughter", "excited", "excited tone", "delight",
+            "singing", "inhale", "exhale", "sigh", "panting", "clearing throat", "tsk", "moaning",
+            "angry", "sad", "shocked", "surprised", "screaming", "shouting", "interrupting", "with strong accent",
+            "echo", "low volume",
+        ]
+
         with gr.Row():
             # ── Left ──────────────────────────────────────────────────────────
             with gr.Column(scale=3):
-                text = gr.Textbox(label=i18n("Input Text"), placeholder=TEXTBOX_PLACEHOLDER, lines=10)
+                text = gr.Textbox(label=i18n("Input Text"), placeholder=TEXTBOX_PLACEHOLDER, lines=10, elem_id="text-input")
+
+                with gr.Accordion("🏷️ Inline Tags — click to insert at cursor", open=False):
+                    tag_buttons = []
+                    rows = [_TAGS[i:i+8] for i in range(0, len(_TAGS), 8)]
+                    for row in rows:
+                        with gr.Row():
+                            for tag in row:
+                                btn = gr.Button(f"[{tag}]", size="sm")
+                                tag_buttons.append((btn, tag))
 
                 with gr.Row():
                     with gr.Column():
@@ -281,6 +298,27 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
             [reference_audio, reference_text, save_name, save_desc, save_pub],
             [save_status, saved_dropdown],
         )
+
+        # Tag insertion — JS handles cursor position, Python just passes through
+        for btn, tag in tag_buttons:
+            btn.click(
+                fn=None,
+                inputs=[text],
+                outputs=[text],
+                js=f"""(t) => {{
+                    const el = document.querySelector('#text-input textarea');
+                    if (el) {{
+                        const s = el.selectionStart ?? t.length;
+                        const e = el.selectionEnd ?? s;
+                        const v = t.slice(0, s) + '[{tag}]' + t.slice(e);
+                        el.value = v;
+                        el.selectionStart = el.selectionEnd = s + {len(tag) + 2};
+                        el.dispatchEvent(new Event('input', {{bubbles: true}}));
+                        return [v];
+                    }}
+                    return [t + ' [{tag}]'];
+                }}""",
+            )
 
         use_memory_cache = gr.State("on")
 
