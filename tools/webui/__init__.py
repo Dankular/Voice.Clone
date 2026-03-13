@@ -187,17 +187,6 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
                 with gr.Row():
                     with gr.Column():
 
-                        with gr.Tab(label="Advanced Config"):
-                            with gr.Row():
-                                chunk_length = gr.Slider(label="Iterative Prompt Length (0=off)", minimum=100, maximum=400, value=300, step=8)
-                                max_new_tokens = gr.Slider(label="Max tokens per batch (0=unlimited)", minimum=0, maximum=2048, value=0, step=8)
-                            with gr.Row():
-                                top_p = gr.Slider(label="Top-P", minimum=0.7, maximum=0.95, value=0.8, step=0.01)
-                                repetition_penalty = gr.Slider(label="Repetition Penalty", minimum=1, maximum=1.2, value=1.1, step=0.01)
-                            with gr.Row():
-                                temperature = gr.Slider(label="Temperature", minimum=0.7, maximum=1.0, value=0.8, step=0.01)
-                                seed = gr.Number(label="Seed (0=random)", value=0)
-
                         with gr.Tab(label="🎙️ Voice"):
                             reference_id = gr.Textbox(label="Reference ID", placeholder="Leave empty to use gallery/uploaded audio", visible=False)
                             use_memory_cache = gr.Radio(label="Use Memory Cache", choices=["on", "off"], value="on")
@@ -245,6 +234,17 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
                             save_desc      = gr.Textbox(label="Description", lines=1)
                             save_btn       = gr.Button("💾 Save Voice")
                             save_status    = gr.Markdown("")
+
+                        with gr.Tab(label="Advanced Config"):
+                            with gr.Row():
+                                chunk_length = gr.Slider(label="Iterative Prompt Length (0=off)", minimum=100, maximum=400, value=300, step=8)
+                                max_new_tokens = gr.Slider(label="Max tokens per batch (0=unlimited)", minimum=0, maximum=2048, value=0, step=8)
+                            with gr.Row():
+                                top_p = gr.Slider(label="Top-P", minimum=0.7, maximum=0.95, value=0.8, step=0.01)
+                                repetition_penalty = gr.Slider(label="Repetition Penalty", minimum=1, maximum=1.2, value=1.1, step=0.01)
+                            with gr.Row():
+                                temperature = gr.Slider(label="Temperature", minimum=0.7, maximum=1.0, value=0.8, step=0.01)
+                                seed = gr.Number(label="Seed (0=random)", value=0)
 
             # ── Right ─────────────────────────────────────────────────────────
             with gr.Column(scale=3):
