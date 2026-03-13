@@ -81,7 +81,7 @@ def _load_saved_voices() -> list[dict]:
 
 
 def _transcribe(audio_path: str) -> str:
-    segments, _ = _get_whisper().transcribe(audio_path, beam_size=5)
+    segments, _ = _get_whisper().transcribe(audio_path, beam_size=1)
     return " ".join(s.text.strip() for s in segments)
 
 

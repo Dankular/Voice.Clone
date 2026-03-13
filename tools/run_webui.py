@@ -21,6 +21,9 @@ from tools.webui.inference import get_inference_wrapper
 
 os.environ["EINX_FILTER_TRACEBACK"] = "false"
 
+# Persist torch.compile/inductor compiled kernels across restarts (~4 min → ~30 s after first run)
+os.environ.setdefault("TORCHINDUCTOR_CACHE_DIR", "/root/.inductor_cache")
+
 # Performance: enable TF32 and FP16 tensor cores
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
@@ -67,6 +70,14 @@ if __name__ == "__main__":
         checkpoint_path=args.decoder_checkpoint_path,
         device=args.device,
     )
+
+    if args.compile:
+        logger.info("Compiling VQ-GAN decoder...")
+        decoder_model.forward = torch.compile(
+            decoder_model.forward,
+            backend="inductor",
+            mode="reduce-overhead",
+        )
 
     logger.info("Warming up...")
     inference_engine = TTSInferenceEngine(

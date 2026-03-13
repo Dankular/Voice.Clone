@@ -44,7 +44,7 @@ def transcribe_audio(audio_path: str) -> str:
     if not audio_path:
         return ""
     try:
-        segments, info = _get_whisper().transcribe(audio_path, beam_size=5)
+        segments, info = _get_whisper().transcribe(audio_path, beam_size=1)
         text = " ".join(s.text.strip() for s in segments)
         logger.info(f"Transcribed [{info.language}]: {text[:80]}")
         return text
