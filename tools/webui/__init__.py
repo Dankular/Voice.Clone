@@ -13,6 +13,38 @@ from loguru import logger
 from fish_speech.i18n import i18n
 from tools.webui.variables import HEADER_MD, TEXTBOX_PLACEHOLDER
 
+_OLLAMA_MODEL = "qwen3:4b"
+_ENHANCE_SYSTEM = (
+    "You are a speech annotation assistant for a text-to-speech system. "
+    "Insert [tag] annotations INLINE into the provided text to guide tone, emotion, and delivery. "
+    "Rules: insert tags where delivery changes — not at every word; use sparingly and purposefully. "
+    "Known tags (free-form also accepted): [pause], [short pause], [emphasis], [whisper], [low voice], "
+    "[loud], [laughing], [chuckle], [excited], [excited tone], [sigh], [inhale], [exhale], [angry], "
+    "[sad], [surprised], [delight], [screaming], [shouting], [volume up], [volume down], [singing], "
+    "[panting], [clearing throat], [tsk], [echo], [with strong accent], [interrupting]. "
+    "Return ONLY the annotated text. No explanation, no markdown, no preamble. No <think> blocks."
+)
+
+
+def enhance_text(text: str) -> tuple[str, str]:
+    if not text.strip():
+        return text, "<span style='color:orange'>Enter some text first.</span>"
+    try:
+        resp = requests.post(
+            "http://localhost:11434/api/generate",
+            json={"model": _OLLAMA_MODEL, "system": _ENHANCE_SYSTEM, "prompt": text, "stream": False},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        result = resp.json().get("response", "").strip()
+        # Strip any stray <think>...</think> blocks some models emit
+        import re
+        result = re.sub(r"<think>.*?</think>", "", result, flags=re.DOTALL).strip()
+        return result, "<span style='color:green'>✓ Enhanced</span>"
+    except Exception as e:
+        logger.error(f"Enhance failed: {e}")
+        return text, f"<span style='color:red'>Error: {e}</span>"
+
 VOICES_DIR = Path("/root/fish-speech/voices")
 VOICES_DIR.mkdir(exist_ok=True)
 EL_VOICES_FILE = Path("/root/fish-speech/el_voices.json")
@@ -192,6 +224,10 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
             with gr.Column(scale=3):
                 text = gr.Textbox(label=i18n("Input Text"), placeholder=TEXTBOX_PLACEHOLDER, lines=10, elem_id="text-input")
 
+                with gr.Row():
+                    enhance_btn = gr.Button("✨ Enhance Input", variant="secondary", scale=1)
+                    enhance_status = gr.HTML("", visible=True)
+
                 with gr.Accordion("🏷️ Inline Tags — click to insert at cursor", open=False):
                     tag_buttons = []
                     rows = [_TAGS[i:i+8] for i in range(0, len(_TAGS), 8)]
@@ -269,6 +305,9 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
                 generate = gr.Button("🎧 Generate", variant="primary")
 
         # ── Events ────────────────────────────────────────────────────────────
+
+        # Enhance input with Qwen3 tag annotations
+        enhance_btn.click(enhance_text, [text], [text, enhance_status])
 
         # Auto-transcribe on upload
         reference_audio.change(transcribe_audio, [reference_audio], [reference_text])
