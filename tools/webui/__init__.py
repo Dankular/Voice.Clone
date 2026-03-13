@@ -237,7 +237,7 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
                         with gr.Tab(label="Advanced Config"):
                             with gr.Row():
                                 chunk_length = gr.Slider(label="Iterative Prompt Length (0=off)", minimum=100, maximum=400, value=300, step=8)
-                                max_new_tokens = gr.Slider(label="Max tokens per batch (0=unlimited)", minimum=0, maximum=2048, value=1024, step=8)
+                                max_new_tokens = gr.Slider(label="Max tokens per batch (0=auto)", minimum=0, maximum=4096, value=0, step=8)
                             with gr.Row():
                                 top_p = gr.Slider(label="Top-P", minimum=0.7, maximum=0.95, value=0.8, step=0.01)
                                 repetition_penalty = gr.Slider(label="Repetition Penalty", minimum=1, maximum=1.2, value=1.1, step=0.01)

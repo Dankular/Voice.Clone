@@ -138,17 +138,24 @@ def _resolve_saved_voice(voice_id: str):
     return audio_path, transcription
 
 
+def _estimate_max_tokens(text: str) -> int:
+    """~3 semantic tokens per char at normal speech rate, 3x safety buffer, capped at 4096."""
+    return max(512, min(4096, len(text) * 10))
+
+
 def _run_inference(text: str, audio_path: str, transcription: str, **kwargs) -> tuple[int, np.ndarray]:
     from fish_speech.utils.schema import ServeReferenceAudio, ServeTTSRequest
 
     with open(audio_path, "rb") as f:
         audio_bytes = f.read()
 
+    max_new_tokens = kwargs.get("max_new_tokens", 0) or _estimate_max_tokens(text)
+
     req = ServeTTSRequest(
         text=text,
         references=[ServeReferenceAudio(audio=audio_bytes, text=transcription)],
         reference_id=None,
-        max_new_tokens=kwargs.get("max_new_tokens", 0),
+        max_new_tokens=max_new_tokens,
         chunk_length=kwargs.get("chunk_length", 300),
         top_p=kwargs.get("top_p", 0.8),
         repetition_penalty=kwargs.get("repetition_penalty", 1.1),
