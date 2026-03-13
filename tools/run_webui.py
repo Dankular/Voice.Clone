@@ -76,7 +76,7 @@ if __name__ == "__main__":
         decoder_model.forward = torch.compile(
             decoder_model.forward,
             backend="inductor",
-            mode="reduce-overhead",
+            mode="default",
         )
 
     logger.info("Warming up...")
