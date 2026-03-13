@@ -32,8 +32,15 @@ def enhance_text(text: str) -> tuple[str, str]:
     try:
         resp = requests.post(
             "http://localhost:11434/api/generate",
-            json={"model": _OLLAMA_MODEL, "system": _ENHANCE_SYSTEM, "prompt": text, "stream": False},
-            timeout=60,
+            json={
+                "model": _OLLAMA_MODEL,
+                "system": _ENHANCE_SYSTEM,
+                "prompt": text,
+                "stream": False,
+                "think": False,
+                "options": {"num_ctx": 2048, "temperature": 0.3},
+            },
+            timeout=120,
         )
         resp.raise_for_status()
         result = resp.json().get("response", "").strip()
