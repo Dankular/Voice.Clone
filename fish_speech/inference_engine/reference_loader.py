@@ -1,10 +1,12 @@
 import io
+import subprocess
+import tempfile
 from hashlib import sha256
 from pathlib import Path
 from typing import Callable, Literal, Tuple
 
+import soundfile as sf
 import torch
-import torchaudio
 from loguru import logger
 
 from fish_speech.models.dac.modded_dac import DAC
@@ -30,9 +32,6 @@ class ReferenceLoader:
         self.decoder_model: DAC
         self.encode_reference: Callable
 
-        # torchaudio 2.10+ auto-selects backend (torchcodec/ffmpeg/soundfile)
-        # Do not hardcode backend="soundfile" as it cannot decode MP3
-        self.backend = None
 
     def load_by_id(
         self,
@@ -107,22 +106,36 @@ class ReferenceLoader:
         """
         Load the audio data from a file or bytes.
         """
-        if len(reference_audio) > 255 or not Path(reference_audio).exists():
-            audio_data = reference_audio
-            reference_audio = io.BytesIO(audio_data)
+        # Write bytes input to a temp file if needed
+        if isinstance(reference_audio, (bytes, io.BytesIO)):
+            data = reference_audio if isinstance(reference_audio, bytes) else reference_audio.read()
+            src = tempfile.NamedTemporaryFile(suffix=".audio", delete=False)
+            src.write(data)
+            src.close()
+            src_path = src.name
+            cleanup_src = True
+        elif len(reference_audio) > 255 or not Path(reference_audio).exists():
+            src = tempfile.NamedTemporaryFile(suffix=".audio", delete=False)
+            src.write(reference_audio)
+            src.close()
+            src_path = src.name
+            cleanup_src = True
+        else:
+            src_path = str(reference_audio)
+            cleanup_src = False
 
-        waveform, original_sr = torchaudio.load(reference_audio)
+        # Convert to mono WAV at target sample rate via ffmpeg (handles mp3, flac, wav, etc.)
+        wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        wav.close()
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", src_path, "-ar", str(sr), "-ac", "1", "-f", "wav", wav.name],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True,
+        )
+        if cleanup_src:
+            Path(src_path).unlink(missing_ok=True)
 
-        if waveform.shape[0] > 1:
-            waveform = torch.mean(waveform, dim=0, keepdim=True)
-
-        if original_sr != sr:
-            resampler = torchaudio.transforms.Resample(
-                orig_freq=original_sr, new_freq=sr
-            )
-            waveform = resampler(waveform)
-
-        audio = waveform.squeeze().numpy()
+        audio, _ = sf.read(wav.name, dtype="float32")
+        Path(wav.name).unlink(missing_ok=True)
         return audio
 
     def list_reference_ids(self) -> list[str]:
