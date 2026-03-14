@@ -59,7 +59,7 @@ Text will be narrative/storytelling or conversational dialogue. Adapt accordingl
 - Emotional tags mark a SHIFT — not the baseline mood of the whole text.
 - Do not over-annotate. Aim for 1 tag per 15–25 words on average.
 - Do not alter, rephrase, or remove any of the original text.
-- Return ONLY the fully annotated text inside <output> tags. No explanation, no preamble, no markdown.
+- Return ONLY the fully annotated text. No explanation, no preamble, no markdown.
 
 ## Anti-patterns
 - [sad] across a whole monologue — tag the moment it breaks, not the whole passage.
@@ -78,18 +78,16 @@ Style: [professional broadcast tone] [warm tone] [cold tone] [sarcastic] [dramat
 
 ## Examples
 Input:  I can't believe you did that. That's incredible.
-Output: <output>[shocked] I can't believe you did that. [laughing] That's incredible.</output>
+Output: [shocked] I can't believe you did that. [laughing] That's incredible.
 
 Input:  Please. Just listen to me for one second.
-Output: <output>[desperate] Please. [pause] Just [emphasis] listen to me for one second.</output>
+Output: [desperate] Please. [pause] Just [emphasis] listen to me for one second.
 
 Input:  Ha. Yeah. Sure. Whatever you say.
-Output: <output>[sarcastic] Ha. [pause] Yeah. [low voice] Sure. Whatever you say.</output>
+Output: [sarcastic] Ha. [pause] Yeah. [low voice] Sure. Whatever you say.
 
 Input:  She walked into the room. Nobody moved. She didn't look at anyone — just crossed to the window and stood there.
-Output: <output>She walked into the room. [pause] Nobody moved. [low voice] She didn't look at anyone — [short pause] just crossed to the window and stood there.</output>
-
-Your entire response must contain ONLY the <output> tags with the annotated text inside. No analysis, no preamble, no commentary outside the tags.\
+Output: She walked into the room. [pause] Nobody moved. [low voice] She didn't look at anyone — [short pause] just crossed to the window and stood there.\
 """
 
 _ENHANCE_SYSTEM_NO_PROFILE = _ENHANCE_SYSTEM_TEMPLATE.format(
@@ -128,15 +126,11 @@ def enhance_text(text: str, voice_meta: dict) -> tuple[str, str]:
                 "temperature": 0.4,
                 "max_tokens": 1024,
             },
-            timeout=120,
+            timeout=300,
         )
         resp.raise_for_status()
         raw = resp.json()["choices"][0]["message"]["content"].strip()
-        match = re.search(r"<output>(.*?)</output>", raw, flags=re.DOTALL)
-        if match:
-            result = match.group(1).strip()
-        else:
-            result = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+        result = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
         return result, "<span style='color:green'>✓ Enhanced</span>"
     except Exception as e:
         logger.error(f"Enhance failed: {e}")
