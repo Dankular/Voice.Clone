@@ -64,12 +64,16 @@ fi
 # --- llama.cpp (CPU inference for LLM annotation/enhance) ---
 # See fish_install_llamacpp.sh to install after this script completes
 
-# --- Pull our modified webui files from GitHub ---
+# --- Pull our modified files from GitHub ---
 cd /root/fish-speech
 REPO_RAW="https://raw.githubusercontent.com/Dankular/Voice.Clone/main"
 wget -q "$REPO_RAW/tools/webui/__init__.py" -O tools/webui/__init__.py
 wget -q "$REPO_RAW/tools/run_webui.py" -O tools/run_webui.py
+wget -q "$REPO_RAW/tools/fish_api.py" -O tools/fish_api.py
 wget -q "$REPO_RAW/fetch_el_metadata.py" -O fetch_el_metadata.py
+
+# --- libcuda.so symlink (required for torch.compile / inductor) ---
+ln -sf /usr/lib/x86_64-linux-gnu/libcuda.so.1 /usr/lib/x86_64-linux-gnu/libcuda.so
 
 echo "=== Install complete ==="
 echo "Run: /root/fish_start_3090.sh"
