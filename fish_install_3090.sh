@@ -48,6 +48,13 @@ fi
 # --- Voices dir ---
 mkdir -p /root/fish-speech/voices
 
+# --- ElevenLabs voice metadata (10,790 voices for gallery) ---
+cd /root/fish-speech
+if [ ! -f el_voices.json ]; then
+    echo "Fetching ElevenLabs voice metadata..."
+    /root/fish-env/bin/python3 fetch_el_metadata.py
+fi
+
 # --- cloudflared ---
 if ! command -v cloudflared &>/dev/null; then
     wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /usr/local/bin/cloudflared
@@ -56,6 +63,13 @@ fi
 
 # --- llama.cpp (CPU inference for LLM annotation/enhance) ---
 # See fish_install_llamacpp.sh to install after this script completes
+
+# --- Pull our modified webui files from GitHub ---
+cd /root/fish-speech
+REPO_RAW="https://raw.githubusercontent.com/Dankular/Voice.Clone/main"
+wget -q "$REPO_RAW/tools/webui/__init__.py" -O tools/webui/__init__.py
+wget -q "$REPO_RAW/tools/run_webui.py" -O tools/run_webui.py
+wget -q "$REPO_RAW/fish_speech/inference_engine/reference_loader.py" -O fish_speech/inference_engine/reference_loader.py
 
 echo "=== Install complete ==="
 echo "Run: /root/fish_start_3090.sh"
