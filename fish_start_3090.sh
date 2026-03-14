@@ -15,7 +15,7 @@ if [ -n "$LLAMA_MODEL" ]; then
             --model \"$LLAMA_MODEL\" \
             --host 0.0.0.0 --port 11434 \
             --ctx-size 2048 \
-            --n-gpu-layers 0 \
+            --n-gpu-layers 99 \
             --threads $(nproc) \
             >> /root/llamacpp.log 2>&1
     "
@@ -37,7 +37,6 @@ screen -dmS fishwebui bash -c '
     python tools/run_webui.py \
         --llama-checkpoint-path checkpoints/s2-pro \
         --decoder-checkpoint-path checkpoints/s2-pro/codec.pth \
-        --compile \
         >> /root/webui.log 2>&1
 '
 
