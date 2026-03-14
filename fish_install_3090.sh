@@ -24,10 +24,14 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 
 # Fish Speech deps (--no-deps to preserve our cu121 torch)
 pip install -e ".[stable]" --no-deps
-pip install faster-whisper soundfile requests loguru pyrootutils huggingface_hub
-# Extra deps not captured by [stable] on Vast.ai images
-pip install descript-audio-codec
-pip install git+https://github.com/descriptinc/audiotools.git
+# All project deps (from pyproject.toml) excluding torch/torchaudio already installed
+pip install \
+    faster-whisper soundfile requests loguru pyrootutils huggingface_hub \
+    natsort gradio transformers datasets lightning hydra-core einops librosa \
+    rich grpcio uvicorn loralib resampy "einx[torch]==0.2.2" zstandard pydub \
+    modelscope opencc-python-reimplemented silero-vad ormsgpack tiktoken \
+    "pydantic==2.9.2" cachetools safetensors "kui>=1.6.0" \
+    descript-audio-codec descript-audiotools
 
 # --- Model checkpoints (fishaudio/s2-pro) ---
 mkdir -p /root/fish-speech/checkpoints
