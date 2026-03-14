@@ -13,61 +13,70 @@ from loguru import logger
 from fish_speech.i18n import i18n
 from tools.webui.variables import HEADER_MD, TEXTBOX_PLACEHOLDER
 
-_OLLAMA_MODEL = "qwen2.5:3b"
-_ENHANCE_SYSTEM = """\
+_LLM_MODEL = "local"  # llama.cpp serves whatever model is loaded; name is ignored
+_ENHANCE_SYSTEM_TEMPLATE = """\
 You are an expert speech director and prosody annotator for a high-fidelity text-to-speech system (Fish Audio S2 Pro).
 
-Your task: read the provided text deeply, understand its emotional arc, speaker intent, rhetorical structure, and pacing — then insert [tag] annotations INLINE at exactly the right moments to bring the performance to life.
+Your task: read the provided text and the voice profile below, then insert [tag] annotations INLINE at exactly the right moments to bring the performance to life.
 
-Content will be narrative/storytelling or conversational dialogue. Adapt accordingly:
-- Narrative: honour the narrator's voice — measured, considered, with emotional colouring at story peaks only.
-- Dialogue: each speaker has a distinct register. Track who is speaking and let their personality drive tag choices.
+## Voice profile
+{voice_name}
+Gender: {gender} | Age: {age} | Accent: {accent}
+Description: {voice_description}
 
-Speaker inference (apply before annotating):
-- Read the full text first. Form a clear picture of the implied speaker: age, confidence, emotional state, relationship to listener.
-- In dialogue, infer each participant's disposition independently.
-- Let your inferred speaker profile constrain tag choices. A stoic character gets [low voice] and [pause], not [excited] or [giggling].
-- If the speaker's emotional state is ambiguous, choose the more restrained tag or no tag.
+Use the voice profile to anchor your speaker inference. The profile defines the ceiling and floor of expressiveness:
+- A "calm, measured narrator" gets sparse tagging, [low voice], [pause] — not [screaming] or [giggling].
+- A "warm and bubbly" profile opens space for [laughing] and [excited].
+- "Professional broadcaster" means clean prosody — [emphasis] and [pause] only, no paralinguistics.
+- If the profile conflicts with the text's emotion, favour the profile — the voice IS the character.
+- If no profile is provided, infer speaker from tone and content of the text alone.
 
-Analysis process (do not output this — only output the annotated text):
-1. Identify the emotional journey: where does tension build, release, shift? Where is the climax?
-2. Identify rhetorical devices: lists, questions, irony, emphasis, contrast, repetition.
-3. Identify natural breath and pause points: after subordinate clauses, before pivotal words, at punctuation beats.
-4. Identify register shifts: when does the speaker lean in, pull back, become intimate or commanding?
-5. Lock in your speaker profile before choosing any tag.
+## Content type
+Text will be narrative/storytelling or conversational dialogue. Adapt accordingly:
+- Narrative: honour the narrator's measured voice — emotional colouring at story peaks only.
+- Dialogue: track each speaker independently. Let their personality drive tag choices, not the scene's overall mood.
 
-Tag selection rules (priority order):
-1. PHYSICAL TRUTH first — if the text implies a physical vocal action ([inhale], [sigh], [clearing throat], [laughing]), use the specific physical tag, not a vague emotional one.
-2. REGISTER over EMOTION — [low voice] or [whisper] is more specific and actionable than [sad]. Prefer delivery tags when both would apply.
-3. EMOTION tags ([excited], [angry], [sad]) only when a clear tonal shift occurs that cannot be captured by delivery or paralinguistic tags alone.
-4. FREE-FORM when nothing fits — write a short natural-language description: [wry smile in voice], [barely holding it together], [voice dropping with shame]. Keep under 5 words.
-5. NEVER stack multiple tags on the same word. Choose the single most impactful one.
+## Analysis process (do not output — internal only)
+1. Absorb the voice profile. Establish expressiveness range before reading the text.
+2. Identify the emotional journey: tension, release, shift, climax.
+3. Identify rhetorical devices: lists, questions, irony, emphasis, contrast, repetition.
+4. Identify breath and pause points: subordinate clauses, before pivotal words, at punctuation beats.
+5. Identify register shifts: leaning in, pulling back, intimate vs commanding.
+6. Lock in speaker profile constraints before choosing any tag.
 
-Annotation rules:
-- Place tags BEFORE the word or phrase they govern, not after.
-- Use [pause] / [short pause] at natural breath points and dramatic beats — not at every comma.
-- Use [emphasis] only on the single most important word in a clause, not liberally.
-- Paralinguistics ([inhale], [sigh], [clearing throat], [tsk]) should feel spontaneous and human, not mechanical.
-- Emotional tags mark a SHIFT in register — not the baseline mood of the whole text.
-- Do not over-annotate. Silence and untagged delivery are powerful. Aim for 1 tag per 15–25 words on average.
+## Tag selection (priority order)
+1. PHYSICAL TRUTH first — if the text implies a vocal action ([inhale], [sigh], [clearing throat], [laughing]), use the specific physical tag, not a vague emotional one.
+2. REGISTER over EMOTION — [low voice] or [whisper] is more specific than [sad]. Prefer delivery tags when both apply.
+3. EMOTION tags ([excited], [angry], [sad]) only on a clear tonal SHIFT that cannot be captured by delivery or paralinguistic tags alone.
+4. FREE-FORM when nothing fits — short natural-language description: [wry smile in voice], [barely holding it together], [voice dropping with shame]. Max 5 words.
+5. NEVER stack multiple tags on the same word. One tag, maximum impact.
+
+## Annotation rules
+- Place tags BEFORE the word or phrase they govern.
+- [pause] / [short pause] at dramatic beats and breath points — not at every comma.
+- [emphasis] on the single most important word in a clause only.
+- Paralinguistics ([inhale], [sigh], [tsk]) should feel spontaneous, not mechanical.
+- Emotional tags mark a SHIFT — not the baseline mood of the whole text.
+- Do not over-annotate. Aim for 1 tag per 15–25 words on average.
 - Do not alter, rephrase, or remove any of the original text.
-- Return ONLY the fully annotated text. No explanation, no preamble, no markdown.
+- Return ONLY the fully annotated text inside <output> tags. No explanation, no preamble, no markdown.
 
-Tag selection anti-patterns (avoid these):
-- [sad] on a whole monologue — tag the moment it breaks, not the whole passage.
+## Anti-patterns
+- [sad] across a whole monologue — tag the moment it breaks, not the whole passage.
 - [excited] on informational content — excitement must be earned by the text.
-- [emphasis] on every important word — pick one per clause maximum.
-- [laughing] when the text is only mildly amusing — reserve for genuine laughter moments.
-- Generic [pause] at every sentence break — only where timing genuinely adds meaning.
+- [emphasis] on every important word — one per clause maximum.
+- [laughing] when text is only mildly amusing — reserve for genuine laughter moments.
+- [pause] at every sentence break — only where timing adds meaning.
+- Ignoring the voice profile — a stoic character does not get [giggling].
 
-Known tag vocabulary (non-exhaustive):
+## Tag vocabulary (non-exhaustive)
 Paralinguistic: [laughing] [chuckling] [chuckle] [giggling] [sighing] [sigh] [exhale] [inhale] [tsk] [gasp] [crying] [sobbing] [panting] [clearing throat] [moaning]
 Emotion: [excited] [angry] [sad] [nervous] [confident] [surprised] [disappointed] [disgusted] [scared] [happy] [upset] [confused] [delight] [shocked]
 Delivery: [whisper] [low voice] [shouting] [screaming] [loud] [singing] [echo] [interrupting] [with strong accent]
 Prosody: [pause] [short pause] [long pause] [emphasis] [slow] [fast] [volume up] [volume down] [low volume] [pitch up] [pitch down]
 Style: [professional broadcast tone] [warm tone] [cold tone] [sarcastic] [dramatic] [excited tone] [laughing tone]
 
-Examples:
+## Examples
 Input:  I can't believe you did that. That's incredible.
 Output: <output>[shocked] I can't believe you did that. [laughing] That's incredible.</output>
 
@@ -83,31 +92,50 @@ Output: <output>She walked into the room. [pause] Nobody moved. [low voice] She 
 Your entire response must contain ONLY the <output> tags with the annotated text inside. No analysis, no preamble, no commentary outside the tags.\
 """
 
+_ENHANCE_SYSTEM_NO_PROFILE = _ENHANCE_SYSTEM_TEMPLATE.format(
+    voice_name="Unknown",
+    gender="unknown",
+    age="unknown",
+    accent="unknown",
+    voice_description="No profile available — infer speaker from tone and content of the text alone.",
+)
 
-def enhance_text(text: str) -> tuple[str, str]:
+
+def enhance_text(text: str, voice_meta: dict) -> tuple[str, str]:
     if not text.strip():
         return text, "<span style='color:orange'>Enter some text first.</span>"
     try:
+        import re
+        if voice_meta:
+            system = _ENHANCE_SYSTEM_TEMPLATE.format(
+                voice_name=voice_meta.get("name", "Unknown"),
+                gender=voice_meta.get("gender", "unknown"),
+                age=voice_meta.get("age", "unknown"),
+                accent=voice_meta.get("accent", "unknown"),
+                voice_description=voice_meta.get("description", "No description available."),
+            )
+        else:
+            system = _ENHANCE_SYSTEM_NO_PROFILE
         resp = requests.post(
-            "http://localhost:11434/api/generate",
+            "http://localhost:11434/v1/chat/completions",
             json={
-                "model": _OLLAMA_MODEL,
-                "system": _ENHANCE_SYSTEM,
-                "prompt": text,
+                "model": _LLM_MODEL,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": text},
+                ],
                 "stream": False,
-                "options": {"num_ctx": 4096, "temperature": 0.4},
+                "temperature": 0.4,
+                "max_tokens": 1024,
             },
             timeout=120,
         )
         resp.raise_for_status()
-        import re
-        raw = resp.json().get("response", "").strip()
-        # Extract content from <output>...</output> tags (model may still reason in plain text)
+        raw = resp.json()["choices"][0]["message"]["content"].strip()
         match = re.search(r"<output>(.*?)</output>", raw, flags=re.DOTALL)
         if match:
             result = match.group(1).strip()
         else:
-            # Fallback: strip <think> blocks and return whatever remains
             result = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
         return result, "<span style='color:green'>✓ Enhanced</span>"
     except Exception as e:
@@ -181,13 +209,13 @@ def filter_voices(search: str, lang: str, gender: str, age: str, accent: str) ->
 
 
 def load_el_voice(label: str):
-    """Download preview on-demand, transcribe, return as reference audio + text."""
+    """Download preview on-demand, transcribe, return as reference audio + text + voice meta."""
     if not label:
-        return None, ""
+        return None, "", {}
     short_id = label.split("(")[-1].rstrip(")")
     voice = next((v for v in _load_el_voices() if v["id"].startswith(short_id)), None)
     if not voice or not voice.get("preview_url"):
-        return None, ""
+        return None, "", {}
 
     logger.info(f"Fetching preview for: {voice['name']}")
     try:
@@ -195,14 +223,14 @@ def load_el_voice(label: str):
         resp.raise_for_status()
     except Exception as e:
         logger.error(f"Preview download failed: {e}")
-        return None, ""
+        return None, "", {}
 
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
         tmp.write(resp.content)
         tmp_path = tmp.name
 
     transcription = transcribe_audio(tmp_path)
-    return tmp_path, transcription
+    return tmp_path, transcription, voice
 
 
 def _unique_filter_values(key: str) -> list[str]:
@@ -212,31 +240,28 @@ def _unique_filter_values(key: str) -> list[str]:
 
 # ── Custom voice library (user-saved) ─────────────────────────────────────────
 
-def _load_saved_voices() -> list[dict]:
-    voices = []
-    for p in sorted(VOICES_DIR.glob("*/meta.json")):
-        try:
-            with open(p) as f:
-                voices.append(json.load(f))
-        except Exception:
-            pass
-    return voices
-
-
-def _saved_choices() -> list[str]:
-    return [f"{v['name']}  ({v['id'][:8]})" for v in _load_saved_voices()]
-
-
-def _find_saved(label: str) -> dict | None:
-    sid = label.split("(")[-1].rstrip(")").strip() if "(" in label else ""
-    return next((v for v in _load_saved_voices() if v["id"].startswith(sid)), None)
+def _find_saved_by_id(voice_id: str) -> dict | None:
+    voice_id = voice_id.strip()
+    if not voice_id:
+        return None
+    # Exact match first
+    p = VOICES_DIR / voice_id / "meta.json"
+    if p.exists():
+        with open(p) as f:
+            return json.load(f)
+    # Prefix match (short IDs)
+    for meta_path in VOICES_DIR.glob("*/meta.json"):
+        if meta_path.parent.name.startswith(voice_id):
+            with open(meta_path) as f:
+                return json.load(f)
+    return None
 
 
 def save_voice(audio_path, transcription, name, description, published):
     if not audio_path:
-        return "⚠️ No audio to save.", gr.update()
+        return "⚠️ No audio to save.", ""
     if not name.strip():
-        return "⚠️ Enter a voice name.", gr.update()
+        return "⚠️ Enter a voice name.", ""
     vid = str(uuid.uuid4())
     vdir = VOICES_DIR / vid
     vdir.mkdir()
@@ -250,22 +275,16 @@ def save_voice(audio_path, transcription, name, description, published):
     }
     with open(vdir / "meta.json", "w") as f:
         json.dump(meta, f, indent=2)
-    return f"✅ Saved **{name}**", gr.update(choices=_saved_choices())
+    return f"✅ Saved **{name.strip()}**", vid
 
 
-def load_saved_voice(label: str):
-    v = _find_saved(label)
+def load_saved_voice_by_id(voice_id: str):
+    v = _find_saved_by_id(voice_id)
     if not v:
-        return None, ""
-    return v["audio_file"], v["transcription"]
-
-
-def delete_saved_voice(label: str):
-    v = _find_saved(label)
-    if not v:
-        return "⚠️ Not found.", gr.update(choices=_saved_choices())
-    shutil.rmtree(VOICES_DIR / v["id"], ignore_errors=True)
-    return f"🗑️ Deleted **{v['name']}**", gr.update(choices=_saved_choices())
+        return None, "", "<span style='color:red'>⚠️ Voice ID not found.</span>", {}
+    # Saved voices have name/description but typically no gender/age/accent
+    meta = {"name": v.get("name", ""), "description": v.get("description", "")}
+    return v["audio_file"], v["transcription"], f"<span style='color:green'>✓ Loaded **{v['name']}**</span>", meta
 
 
 # ── App ────────────────────────────────────────────────────────────────────────
@@ -330,15 +349,6 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
                                     )
                                     load_gallery_btn = gr.Button("⬇️ Load Voice", variant="primary")
 
-                                with gr.Tab("⭐ My Saved Voices"):
-                                    saved_dropdown = gr.Dropdown(
-                                        label="Saved voice", choices=_saved_choices(), value=None, interactive=True,
-                                    )
-                                    with gr.Row():
-                                        load_saved_btn  = gr.Button("Load", variant="primary", scale=2)
-                                        delete_saved_btn = gr.Button("🗑️ Delete", variant="stop", scale=1)
-                                    saved_status = gr.Markdown("")
-
                                 with gr.Tab("📤 Upload"):
                                     gr.Markdown("Upload your own reference audio (5–10 sec).")
 
@@ -348,6 +358,13 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
                                                          placeholder="Auto-filled on upload or voice load.")
 
                             gr.Markdown("---")
+                            gr.Markdown("**Load Custom Voice**")
+                            with gr.Row():
+                                load_custom_id  = gr.Textbox(label="Voice ID", placeholder="Paste your voice ID here…", scale=3)
+                                load_custom_btn = gr.Button("⬇️ Load", variant="primary", scale=1)
+                            load_custom_status = gr.HTML("")
+
+                            gr.Markdown("---")
                             gr.Markdown("**Save current audio as a voice**")
                             with gr.Row():
                                 save_name  = gr.Textbox(label="Name", scale=3)
@@ -355,6 +372,7 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
                             save_desc      = gr.Textbox(label="Description", lines=1)
                             save_btn       = gr.Button("💾 Save Voice")
                             save_status    = gr.Markdown("")
+                            saved_id_box   = gr.Textbox(label="Voice ID (copy to reuse across sessions)", interactive=False, visible=False)
 
                         with gr.Tab(label="Advanced Config"):
                             with gr.Row():
@@ -375,8 +393,10 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
 
         # ── Events ────────────────────────────────────────────────────────────
 
-        # Enhance input with Qwen3 tag annotations
-        enhance_btn.click(enhance_text, [text], [text, enhance_status])
+        current_voice_meta = gr.State({})
+
+        # Enhance input — uses active voice profile if available
+        enhance_btn.click(enhance_text, [text, current_voice_meta], [text, enhance_status])
 
         # Auto-transcribe on upload
         reference_audio.change(transcribe_audio, [reference_audio], [reference_text])
@@ -389,22 +409,30 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
                 [gallery_dropdown, gallery_status],
             )
 
-        # Load from gallery (on-demand fetch + transcribe)
+        # Load from gallery (on-demand fetch + transcribe + store voice meta)
         load_gallery_btn.click(
             load_el_voice,
             [gallery_dropdown],
-            [reference_audio, reference_text],
+            [reference_audio, reference_text, current_voice_meta],
         )
 
-        # Load / delete saved voice
-        load_saved_btn.click(load_saved_voice, [saved_dropdown], [reference_audio, reference_text])
-        delete_saved_btn.click(delete_saved_voice, [saved_dropdown], [saved_status, saved_dropdown])
+        # Load custom voice by ID (stores minimal meta for enhance)
+        load_custom_btn.click(
+            load_saved_voice_by_id,
+            [load_custom_id],
+            [reference_audio, reference_text, load_custom_status, current_voice_meta],
+        )
 
-        # Save voice
+        # Save voice — display generated ID in copyable box
+        def _save_and_show(*args):
+            status, vid = save_voice(*args)
+            visible = bool(vid)
+            return status, gr.update(value=vid, visible=visible)
+
         save_btn.click(
-            save_voice,
+            _save_and_show,
             [reference_audio, reference_text, save_name, save_desc, save_pub],
-            [save_status, saved_dropdown],
+            [save_status, saved_id_box],
         )
 
         # Tag insertion — JS handles cursor position, Python just passes through
