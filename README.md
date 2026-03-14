@@ -25,10 +25,10 @@ A production-ready voice cloning API and web UI built on top of [Fish Speech S2 
 
 - Python 3.11
 - CUDA GPU with 24GB VRAM (tested on RTX 3090 — Ampere sm86, CUDA 12.1)
-- 32GB+ system RAM (Fish Speech ~10GB VRAM, GGUF LLM runs CPU-side ~6GB RAM)
+- 32GB+ system RAM
 - ~80GB disk:
   - Fish Speech S2 Pro: ~11GB (safetensors + codec)
-  - GGUF LLM (Q4_K_M 9B): ~5.7GB
+  - GGUF LLM (`Qwen2.5-1.5B-Instruct-abliterated Q4_K_M`): ~940MB VRAM, ~1GB disk
   - llama.cpp build + Python env: ~10GB
   - Voices/cache: varies
 - CUDA driver 535+ (CUDA 12.2 runtime, toolkit 12.1)
@@ -46,7 +46,7 @@ bash fish_install_llamacpp.sh
 
 # 3. Download a GGUF model
 mkdir -p /root/models
-wget -P /root/models/ https://huggingface.co/mradermacher/Huihui-Qwen3.5-9B-abliterated-i1-GGUF/resolve/main/Huihui-Qwen3.5-9B-abliterated.i1-Q4_K_M.gguf
+wget -P /root/models/ https://huggingface.co/mradermacher/Qwen2.5-1.5B-Instruct-abliterated-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-abliterated.Q4_K_M.gguf
 
 # 4. Launch
 bash fish_start_3090.sh
