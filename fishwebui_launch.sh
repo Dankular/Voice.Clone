@@ -8,5 +8,4 @@ exec python tools/run_webui.py \
     --llama-checkpoint-path checkpoints/s2-pro \
     --decoder-checkpoint-path checkpoints/s2-pro/codec.pth \
     --half \
-    --compile \
     >> /root/webui.log 2>&1
