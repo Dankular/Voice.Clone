@@ -14,7 +14,7 @@ if [ -n "$LLAMA_MODEL" ]; then
         /root/llama.cpp/build/bin/llama-server \
             --model \"$LLAMA_MODEL\" \
             --host 0.0.0.0 --port 11434 \
-            --ctx-size 512 \
+            --ctx-size 2048 \
             --n-gpu-layers 99 \
             >> /root/llamacpp.log 2>&1
     "
