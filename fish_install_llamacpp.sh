@@ -20,8 +20,9 @@ if ! command -v nvcc &>/dev/null; then
     apt-get install -y -qq cuda-nvcc-${CUDA_VER} libcublas-dev-${CUDA_VER}
 fi
 
-CUDA_ROOT=$(dirname $(dirname $(which nvcc)))
-echo "CUDA toolkit: $CUDA_ROOT"
+NVCC=$(which nvcc 2>/dev/null || find /usr/local/cuda*/bin -name nvcc 2>/dev/null | head -1)
+CUDA_ROOT=$(dirname $(dirname "$NVCC"))
+echo "CUDA toolkit: $CUDA_ROOT (nvcc: $NVCC)"
 
 cd /root
 if [ ! -d llama.cpp ]; then
