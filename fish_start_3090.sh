@@ -23,6 +23,9 @@ else
     echo "WARNING: No GGUF model found in /root/models/ — enhance feature will fail"
 fi
 
+# --- Apply Ampere-specific patches to fish-speech ---
+bash /root/fish_patch_ampere.sh
+
 # --- Fish Speech WebUI ---
 truncate -s 0 /root/webui.log
 # Strip Windows CRLF line endings that break bash scripts uploaded from Windows

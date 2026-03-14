@@ -24,7 +24,8 @@ os.environ["EINX_FILTER_TRACEBACK"] = "false"
 # Persist torch.compile/inductor compiled kernels across restarts (~4 min → ~30 s after first run)
 os.environ.setdefault("TORCHINDUCTOR_CACHE_DIR", "/root/.inductor_cache")
 
-# Performance: enable TF32 and FP16 tensor cores
+# Performance: enable TF32, BF16 tensor cores (Ampere+), cuDNN autotuning
+torch.set_float32_matmul_precision("high")
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 torch.backends.cudnn.benchmark = True

@@ -7,5 +7,4 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 exec python tools/run_webui.py \
     --llama-checkpoint-path checkpoints/s2-pro \
     --decoder-checkpoint-path checkpoints/s2-pro/codec.pth \
-    --half \
     >> /root/webui.log 2>&1
