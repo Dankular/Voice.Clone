@@ -35,7 +35,8 @@ rm -rf build
 cmake -B build \
     -DGGML_CUDA=ON \
     -DCMAKE_CUDA_ARCHITECTURES=86 \
-    -DCUDAToolkit_ROOT="$CUDA_ROOT"
+    -DCUDAToolkit_ROOT="$CUDA_ROOT" \
+    -DCMAKE_CUDA_COMPILER="$NVCC"
 cmake --build build --config Release -j$(nproc) --target llama-server
 
 mkdir -p /root/models
