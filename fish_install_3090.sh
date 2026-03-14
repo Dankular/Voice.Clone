@@ -69,7 +69,7 @@ cd /root/fish-speech
 REPO_RAW="https://raw.githubusercontent.com/Dankular/Voice.Clone/main"
 wget -q "$REPO_RAW/tools/webui/__init__.py" -O tools/webui/__init__.py
 wget -q "$REPO_RAW/tools/run_webui.py" -O tools/run_webui.py
-wget -q "$REPO_RAW/fish_speech/inference_engine/reference_loader.py" -O fish_speech/inference_engine/reference_loader.py
+wget -q "$REPO_RAW/fetch_el_metadata.py" -O fetch_el_metadata.py
 
 echo "=== Install complete ==="
 echo "Run: /root/fish_start_3090.sh"
