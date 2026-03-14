@@ -15,7 +15,7 @@ if [ -n "$LLAMA_MODEL" ]; then
             --model \"$LLAMA_MODEL\" \
             --host 0.0.0.0 --port 11434 \
             --ctx-size 2048 \
-            --n-gpu-layers 99 \
+            --n-gpu-layers 0 \
             --threads $(nproc) \
             >> /root/llamacpp.log 2>&1
     "
@@ -29,21 +29,14 @@ truncate -s 0 /root/webui.log
 export TORCHINDUCTOR_CACHE_DIR=/root/.inductor_cache
 # LIBRARY_PATH needed so inductor/triton gcc can link libcuda.so
 export LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LIBRARY_PATH
-screen -dmS fishwebui bash -c '
-    source /root/fish-env/bin/activate
-    cd /root/fish-speech
-    export TORCHINDUCTOR_CACHE_DIR=/root/.inductor_cache
-    export LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LIBRARY_PATH
-    python tools/run_webui.py \
-        --llama-checkpoint-path checkpoints/s2-pro \
-        --decoder-checkpoint-path checkpoints/s2-pro/codec.pth \
-        >> /root/webui.log 2>&1
-'
+screen -dmS fishwebui /root/fishwebui_launch.sh
 
 # --- cloudflared tunnel ---
 sleep 5
+pkill -f cloudflared 2>/dev/null || true
+sleep 1
 truncate -s 0 /root/cloudflared.log
-screen -dmS cloudflared bash -c 'cloudflared tunnel --url http://localhost:7860 >> /root/cloudflared.log 2>&1'
+setsid cloudflared tunnel --url http://localhost:7860 >> /root/cloudflared.log 2>&1 &
 
 echo "Started: fishwebui + llamacpp (CPU) + cloudflared"
 echo "Logs:    tail -f /root/webui.log"
