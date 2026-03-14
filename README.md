@@ -13,7 +13,9 @@ A production-ready voice cloning API and web UI built on top of [Fish Speech S2 
 - **Gradio WebUI** — browser-based interface for testing
 - **Voice library** — save and manage custom voices
 - **LRU cache** — repeated calls to the same voice skip download + transcription
-- **Optimised inference** — `torch.compile`, FP16 tensor cores, cuDNN benchmark, xformers
+- **Optimised inference** — `torch.compile`, TF32 tensor cores, cuDNN benchmark
+- **LLM enhance** — llama.cpp server (CPU) with any GGUF model for prosody annotation
+- **Auto max tokens** — output token budget estimated from input character count automatically
 
 ---
 
@@ -22,29 +24,44 @@ A production-ready voice cloning API and web UI built on top of [Fish Speech S2 
 ### Requirements
 
 - Python 3.11
-- CUDA GPU (tested on Tesla V100 32GB)
-- Fish Speech S2 Pro model weights: `checkpoints/s2-pro/`
+- CUDA GPU with 24GB VRAM (tested on RTX 3090 — Ampere sm86, CUDA 12.1)
+- 32GB+ system RAM (Fish Speech ~10GB VRAM, GGUF LLM runs CPU-side ~6GB RAM)
+- ~80GB disk:
+  - Fish Speech S2 Pro: ~11GB (safetensors + codec)
+  - GGUF LLM (Q4_K_M 9B): ~5.7GB
+  - llama.cpp build + Python env: ~10GB
+  - Voices/cache: varies
+- CUDA driver 535+ (CUDA 12.2 runtime, toolkit 12.1)
 
 ### Install
 
+Use the provided install scripts — they handle everything automatically:
+
 ```bash
-git clone https://github.com/fishaudio/fish-speech
-cd fish-speech
+# 1. Full Fish Speech install (deps, model download, EL voices, cloudflared)
+bash fish_install_3090.sh
 
-python3.11 -m venv venv
-source venv/bin/activate
+# 2. Build llama.cpp with CUDA (for enhance input LLM)
+bash fish_install_llamacpp.sh
 
-pip install torch==2.10.0 torchaudio==2.10.0
-pip install xformers faster-whisper
-pip install -e .  # removes pyaudio from pyproject.toml first if needed
+# 3. Download a GGUF model
+mkdir -p /root/models
+wget -P /root/models/ https://huggingface.co/mradermacher/Huihui-Qwen3.5-9B-abliterated-i1-GGUF/resolve/main/Huihui-Qwen3.5-9B-abliterated.i1-Q4_K_M.gguf
 
-# Download model
-huggingface-cli download fishaudio/s2-pro --local-dir checkpoints/s2-pro
+# 4. Launch
+bash fish_start_3090.sh
 ```
+
+**Key Python deps** (installed by `fish_install_3090.sh`):
+- `torch==2.5.1+cu121` / `torchaudio` — pinned for CUDA 12.1 / RTX 3090
+- `faster-whisper` — GPU transcription
+- `descript-audio-codec`, `descript-audiotools` — DAC codec
+- `gradio>5.0`, `uvicorn`, `fastapi` — WebUI + REST API
+- `huggingface_hub` — model download
 
 ### Copy modified files
 
-Copy the files from this repo into your `fish-speech` directory:
+Copy the files from this repo into your `fish-speech` directory (handled automatically by `fish_install_3090.sh`):
 
 ```
 tools/run_webui.py          → fish-speech/tools/run_webui.py
