@@ -26,9 +26,8 @@ fi
 
 # --- Fish Speech WebUI ---
 truncate -s 0 /root/webui.log
-export TORCHINDUCTOR_CACHE_DIR=/root/.inductor_cache
-# LIBRARY_PATH needed so inductor/triton gcc can link libcuda.so
-export LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LIBRARY_PATH
+# Strip Windows CRLF line endings that break bash scripts uploaded from Windows
+sed -i 's/\r//' /root/fishwebui_launch.sh
 screen -dmS fishwebui /root/fishwebui_launch.sh
 
 # --- cloudflared tunnel ---
