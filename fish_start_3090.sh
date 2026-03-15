@@ -6,7 +6,7 @@ pkill -9 -f run_webui.py 2>/dev/null || true
 pkill -9 -f llama-server 2>/dev/null || true
 sleep 1
 
-# --- llama.cpp server on GPU (fast inference, small ctx to minimise VRAM) ---
+# --- llama.cpp server on CPU (keep all VRAM for Fish Speech allocator headroom) ---
 # Requires a GGUF model in /root/models/ — see fish_install_llamacpp.sh
 LLAMA_MODEL=$(ls /root/models/*.gguf 2>/dev/null | head -1)
 if [ -n "$LLAMA_MODEL" ]; then
@@ -15,7 +15,8 @@ if [ -n "$LLAMA_MODEL" ]; then
             --model \"$LLAMA_MODEL\" \
             --host 0.0.0.0 --port 11434 \
             --ctx-size 2048 \
-            --n-gpu-layers 99 \
+            --n-gpu-layers 0 \
+            --threads 8 \
             >> /root/llamacpp.log 2>&1
     "
     echo "llama.cpp started with: $LLAMA_MODEL"

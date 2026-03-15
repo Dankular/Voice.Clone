@@ -8,5 +8,4 @@ export TORCHINDUCTOR_COMPILE_THREADS=1
 exec python tools/run_webui.py \
     --llama-checkpoint-path checkpoints/s2-pro \
     --decoder-checkpoint-path checkpoints/s2-pro/codec.pth \
-    --compile \
     >> /root/webui.log 2>&1
