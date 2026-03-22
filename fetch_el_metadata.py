@@ -1,9 +1,12 @@
 """Fetch all ElevenLabs shared voice metadata (no audio). Stores to el_voices.json."""
 import json
+import os
 import time
 import requests
 
-API_KEY = "sk_d52052e41d776e48038402cfe3885346b6f1c5963a8a0133"
+API_KEY = os.environ.get("EL_API_KEY", "")
+if not API_KEY:
+    raise SystemExit("ERROR: EL_API_KEY environment variable not set")
 HEADERS = {"xi-api-key": API_KEY}
 OUT = "/root/fish-speech/el_voices.json"
 
