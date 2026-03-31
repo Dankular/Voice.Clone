@@ -49,7 +49,8 @@ install_base() {
         rich grpcio uvicorn loralib resampy "einx[torch]==0.2.2" zstandard pydub \
         modelscope opencc-python-reimplemented silero-vad ormsgpack tiktoken \
         "pydantic==2.9.2" cachetools safetensors "kui>=1.6.0" \
-        descript-audio-codec descript-audiotools fastapi
+        descript-audio-codec descript-audiotools fastapi \
+        sentence-transformers
 
     # S2 Pro checkpoints (~11 GB)
     mkdir -p /root/fish-speech/checkpoints
@@ -89,8 +90,9 @@ snapshot_download(repo_id='fishaudio/s2-pro', local_dir='/root/fish-speech/check
 
     echo ""
     echo "=== Install complete ==="
-    echo "Next: ./init.sh llamacpp   (builds llama.cpp for the tagger LLM)"
-    echo "Then: ./init.sh start"
+    echo "Tag classifier uses sentence-transformers (auto-downloaded on first run)."
+    echo "Optional: ./init.sh llamacpp   (builds llama.cpp for other LLM uses)"
+    echo "Next: ./init.sh start"
 }
 
 install_llamacpp() {
@@ -143,6 +145,7 @@ pull_files() {
     wget -q "$REPO_RAW/tools/webui/inference.py" -O tools/webui/inference.py
     wget -q "$REPO_RAW/tools/run_webui.py"        -O tools/run_webui.py
     wget -q "$REPO_RAW/tools/fish_api.py"         -O tools/fish_api.py
+    wget -q "$REPO_RAW/tools/tag_classifier.py"   -O tools/tag_classifier.py
     wget -q "$REPO_RAW/fetch_el_metadata.py"      -O fetch_el_metadata.py
     echo "Done."
 }
@@ -243,9 +246,9 @@ start_services() {
     pkill -f   cloudflared    2>/dev/null || true
     sleep 1
 
-    # llama.cpp (CPU — keeps all 24GB VRAM for Fish Speech)
+    # llama.cpp (optional — no longer needed for tagging, kept for other uses)
     LLAMA_MODEL=$(ls /root/models/*.gguf 2>/dev/null | head -1)
-    if [ -n "$LLAMA_MODEL" ]; then
+    if [ -n "$LLAMA_MODEL" ] && [ -x /root/llama.cpp/build/bin/llama-server ]; then
         screen -dmS llamacpp bash -c "
             /root/llama.cpp/build/bin/llama-server \
                 --model \"$LLAMA_MODEL\" \
@@ -257,7 +260,7 @@ start_services() {
         "
         echo "llama.cpp started: $(basename "$LLAMA_MODEL")"
     else
-        echo "WARNING: No GGUF model in /root/models/ — tagger will fail"
+        echo "NOTE: llama.cpp not found or no GGUF model — tagging uses embedding classifier"
     fi
 
     apply_patches
