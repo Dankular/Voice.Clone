@@ -7,130 +7,18 @@ from pathlib import Path
 from typing import Callable
 
 import gradio as gr
-import requests
 from loguru import logger
 
 from fish_speech.i18n import i18n
 from tools.webui.variables import HEADER_MD, TEXTBOX_PLACEHOLDER
-
-_LLM_MODEL = "local"  # llama.cpp serves whatever model is loaded; name is ignored
-_ENHANCE_SYSTEM_TEMPLATE = """\
-You are an expert speech director and prosody annotator for a high-fidelity text-to-speech system (Fish Audio S2 Pro).
-
-Your task: read the provided text and the voice profile below, then insert [tag] annotations INLINE at exactly the right moments to bring the performance to life.
-
-## Voice profile
-{voice_name}
-Gender: {gender} | Age: {age} | Accent: {accent}
-Description: {voice_description}
-
-Use the voice profile to anchor your speaker inference. The profile defines the ceiling and floor of expressiveness:
-- A "calm, measured narrator" gets sparse tagging, [low voice], [pause] — not [screaming] or [giggling].
-- A "warm and bubbly" profile opens space for [laughing] and [excited].
-- "Professional broadcaster" means clean prosody — [emphasis] and [pause] only, no paralinguistics.
-- If the profile conflicts with the text's emotion, favour the profile — the voice IS the character.
-- If no profile is provided, infer speaker from tone and content of the text alone.
-
-## Content type
-Text will be narrative/storytelling or conversational dialogue. Adapt accordingly:
-- Narrative: honour the narrator's measured voice — emotional colouring at story peaks only.
-- Dialogue: track each speaker independently. Let their personality drive tag choices, not the scene's overall mood.
-
-## Analysis process (do not output — internal only)
-1. Absorb the voice profile. Establish expressiveness range before reading the text.
-2. Identify the emotional journey: tension, release, shift, climax.
-3. Identify rhetorical devices: lists, questions, irony, emphasis, contrast, repetition.
-4. Identify breath and pause points: subordinate clauses, before pivotal words, at punctuation beats.
-5. Identify register shifts: leaning in, pulling back, intimate vs commanding.
-6. Lock in speaker profile constraints before choosing any tag.
-
-## Tag selection (priority order)
-1. PHYSICAL TRUTH first — if the text implies a vocal action ([inhale], [sigh], [clearing throat], [laughing]), use the specific physical tag, not a vague emotional one.
-2. REGISTER over EMOTION — [low voice] or [whisper] is more specific than [sad]. Prefer delivery tags when both apply.
-3. EMOTION tags ([excited], [angry], [sad]) only on a clear tonal SHIFT that cannot be captured by delivery or paralinguistic tags alone.
-4. FREE-FORM when nothing fits — short natural-language description: [wry smile in voice], [barely holding it together], [voice dropping with shame]. Max 5 words.
-5. NEVER stack multiple tags on the same word. One tag, maximum impact.
-
-## Annotation rules
-- Place tags BEFORE the word or phrase they govern.
-- [pause] / [short pause] at dramatic beats and breath points — not at every comma.
-- [emphasis] on the single most important word in a clause only.
-- Paralinguistics ([inhale], [sigh], [tsk]) should feel spontaneous, not mechanical.
-- Emotional tags mark a SHIFT — not the baseline mood of the whole text.
-- Do not over-annotate. Aim for 1 tag per 15–25 words on average.
-- Do not alter, rephrase, or remove any of the original text.
-- Return ONLY the fully annotated text. No explanation, no preamble, no markdown.
-
-## Anti-patterns
-- [sad] across a whole monologue — tag the moment it breaks, not the whole passage.
-- [excited] on informational content — excitement must be earned by the text.
-- [emphasis] on every important word — one per clause maximum.
-- [laughing] when text is only mildly amusing — reserve for genuine laughter moments.
-- [pause] at every sentence break — only where timing adds meaning.
-- Ignoring the voice profile — a stoic character does not get [giggling].
-
-## Tag vocabulary (non-exhaustive)
-Paralinguistic: [laughing] [chuckling] [chuckle] [giggling] [sighing] [sigh] [exhale] [inhale] [tsk] [gasp] [crying] [sobbing] [panting] [clearing throat] [moaning]
-Emotion: [excited] [angry] [sad] [nervous] [confident] [surprised] [disappointed] [disgusted] [scared] [happy] [upset] [confused] [delight] [shocked]
-Delivery: [whisper] [low voice] [shouting] [screaming] [loud] [singing] [echo] [interrupting] [with strong accent]
-Prosody: [pause] [short pause] [long pause] [emphasis] [slow] [fast] [volume up] [volume down] [low volume] [pitch up] [pitch down]
-Style: [professional broadcast tone] [warm tone] [cold tone] [sarcastic] [dramatic] [excited tone] [laughing tone]
-
-## Examples
-Input:  I can't believe you did that. That's incredible.
-Output: [shocked] I can't believe you did that. [laughing] That's incredible.
-
-Input:  Please. Just listen to me for one second.
-Output: [desperate] Please. [pause] Just [emphasis] listen to me for one second.
-
-Input:  Ha. Yeah. Sure. Whatever you say.
-Output: [sarcastic] Ha. [pause] Yeah. [low voice] Sure. Whatever you say.
-
-Input:  She walked into the room. Nobody moved. She didn't look at anyone — just crossed to the window and stood there.
-Output: She walked into the room. [pause] Nobody moved. [low voice] She didn't look at anyone — [short pause] just crossed to the window and stood there.\
-"""
-
-_ENHANCE_SYSTEM_NO_PROFILE = _ENHANCE_SYSTEM_TEMPLATE.format(
-    voice_name="Unknown",
-    gender="unknown",
-    age="unknown",
-    accent="unknown",
-    voice_description="No profile available — infer speaker from tone and content of the text alone.",
-)
+from tools.tag_classifier import classify_and_tag
 
 
 def enhance_text(text: str, voice_meta: dict) -> tuple[str, str]:
     if not text.strip():
         return text, "<span style='color:orange'>Enter some text first.</span>"
     try:
-        import re
-        if voice_meta:
-            system = _ENHANCE_SYSTEM_TEMPLATE.format(
-                voice_name=voice_meta.get("name", "Unknown"),
-                gender=voice_meta.get("gender", "unknown"),
-                age=voice_meta.get("age", "unknown"),
-                accent=voice_meta.get("accent", "unknown"),
-                voice_description=voice_meta.get("description", "No description available."),
-            )
-        else:
-            system = _ENHANCE_SYSTEM_NO_PROFILE
-        resp = requests.post(
-            "http://localhost:11434/v1/chat/completions",
-            json={
-                "model": _LLM_MODEL,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": text},
-                ],
-                "stream": False,
-                "temperature": 0.4,
-                "max_tokens": 1024,
-            },
-            timeout=300,
-        )
-        resp.raise_for_status()
-        raw = resp.json()["choices"][0]["message"]["content"].strip()
-        result = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+        result = classify_and_tag(text, voice_meta)
         return result, "<span style='color:green'>✓ Enhanced</span>"
     except Exception as e:
         logger.error(f"Enhance failed: {e}")
