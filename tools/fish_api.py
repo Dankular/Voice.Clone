@@ -1,5 +1,5 @@
 """
-Fish Speech API routes — mounted alongside the Gradio UI.
+Voice Clone API routes — mounted alongside the Gradio UI.
 
 GET  /gallery          — list all voices (ElevenLabs + saved)
 POST /generate         — generate audio from voice_id + text
@@ -26,8 +26,6 @@ VOICES_DIR = Path("/root/fish-speech/voices")
 
 router = APIRouter()
 
-# ── shared state (set by run_webui.py after model load) ──────────────────────
-_inference_engine = None
 _whisper_model = None
 
 # ── LRU cache: voice_id → (audio_bytes, transcription) ───────────────────────
@@ -48,11 +46,6 @@ def _cache_set(voice_id: str, audio_bytes: bytes, transcription: str):
     if len(_voice_cache) > _VOICE_CACHE_MAX:
         _voice_cache.popitem(last=False)
     logger.info(f"Cached voice {voice_id[:12]} ({len(_voice_cache)}/{_VOICE_CACHE_MAX})")
-
-
-def init_api(inference_engine):
-    global _inference_engine
-    _inference_engine = inference_engine
 
 
 def _get_whisper():
@@ -146,12 +139,7 @@ def _tag_text(text: str, voice_meta: dict) -> str:
     return classify_and_tag(text, voice_meta)
 
 
-def _estimate_max_tokens(text: str) -> int:
-    """~3 semantic tokens per char at normal speech rate, 3x safety buffer, capped at 4096."""
-    return max(512, min(4096, len(text) * 10))
-
-
-def _run_omnivoice_inference(text: str, audio_path: str, transcription: str) -> tuple[int, np.ndarray]:
+def _run_inference(text: str, audio_path: str, transcription: str) -> tuple[int, np.ndarray]:
     """Run inference via OmniVoice (lazy-loaded)."""
     from tools.webui.inference import _get_omnivoice
 
@@ -166,36 +154,6 @@ def _run_omnivoice_inference(text: str, audio_path: str, transcription: str) -> 
     audio_tensors = model.generate(**kwargs)
     wav = audio_tensors[0].cpu().numpy().squeeze()
     return 24000, wav.astype(np.float32)
-
-
-def _run_inference(text: str, audio_path: str, transcription: str, **kwargs) -> tuple[int, np.ndarray]:
-    from fish_speech.utils.schema import ServeReferenceAudio, ServeTTSRequest
-
-    with open(audio_path, "rb") as f:
-        audio_bytes = f.read()
-
-    max_new_tokens = kwargs.get("max_new_tokens", 0) or _estimate_max_tokens(text)
-
-    req = ServeTTSRequest(
-        text=text,
-        references=[ServeReferenceAudio(audio=audio_bytes, text=transcription)],
-        reference_id=None,
-        max_new_tokens=max_new_tokens,
-        chunk_length=kwargs.get("chunk_length", 300),
-        top_p=kwargs.get("top_p", 0.8),
-        repetition_penalty=kwargs.get("repetition_penalty", 1.1),
-        temperature=kwargs.get("temperature", 0.8),
-        seed=kwargs.get("seed") or None,
-        format="wav",
-    )
-
-    for result in _inference_engine.inference(req):
-        if result.code == "final":
-            return result.audio  # (sample_rate, np.ndarray)
-        if result.code == "error":
-            raise HTTPException(500, str(result.error))
-
-    raise HTTPException(500, "No audio generated")
 
 
 # ── endpoints ─────────────────────────────────────────────────────────────────
@@ -260,19 +218,12 @@ def gallery(
 class GenerateRequest(BaseModel):
     voice_id: str
     text: str
-    model: str = "fish-speech"  # "fish-speech" or "omnivoice"
-    max_new_tokens: int = 0
-    chunk_length: int = 300
-    top_p: float = 0.8
-    repetition_penalty: float = 1.1
-    temperature: float = 0.8
-    seed: int = 0
     format: str = "wav"
 
 
 @router.post("/generate")
 def generate(req: GenerateRequest):
-    logger.info(f"API /generate: model={req.model}, voice_id={req.voice_id}, text={req.text[:60]}")
+    logger.info(f"API /generate: voice_id={req.voice_id}, text={req.text[:60]}")
 
     # Resolve voice metadata for tagger
     el_voices = _load_el_voices()
@@ -291,26 +242,11 @@ def generate(req: GenerateRequest):
         cleanup = True
 
     try:
-        if req.model == "omnivoice":
-            sample_rate, audio_data = _run_omnivoice_inference(
-                text=tagged_text,
-                audio_path=audio_path,
-                transcription=transcription,
-            )
-        else:
-            if _inference_engine is None:
-                raise HTTPException(503, "Fish Speech inference engine not ready")
-            sample_rate, audio_data = _run_inference(
-                text=tagged_text,
-                audio_path=audio_path,
-                transcription=transcription,
-                max_new_tokens=req.max_new_tokens,
-                chunk_length=req.chunk_length,
-                top_p=req.top_p,
-                repetition_penalty=req.repetition_penalty,
-                temperature=req.temperature,
-                seed=req.seed,
-            )
+        sample_rate, audio_data = _run_inference(
+            text=tagged_text,
+            audio_path=audio_path,
+            transcription=transcription,
+        )
     finally:
         if cleanup:
             Path(audio_path).unlink(missing_ok=True)

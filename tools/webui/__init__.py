@@ -4,25 +4,12 @@ import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
 
 import gradio as gr
+import requests
 from loguru import logger
 
-from fish_speech.i18n import i18n
 from tools.webui.variables import HEADER_MD, TEXTBOX_PLACEHOLDER
-from tools.tag_classifier import classify_and_tag
-
-
-def enhance_text(text: str, voice_meta: dict) -> tuple[str, str]:
-    if not text.strip():
-        return text, "<span style='color:orange'>Enter some text first.</span>"
-    try:
-        result = classify_and_tag(text, voice_meta)
-        return result, "<span style='color:green'>✓ Enhanced</span>"
-    except Exception as e:
-        logger.error(f"Enhance failed: {e}")
-        return text, f"<span style='color:red'>Error: {e}</span>"
 
 VOICES_DIR = Path("/root/fish-speech/voices")
 VOICES_DIR.mkdir(exist_ok=True)
@@ -171,7 +158,7 @@ def load_saved_voice_by_id(voice_id: str):
 
 # ── App ────────────────────────────────────────────────────────────────────────
 
-def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
+def build_app(inference_fct, theme: str = "light") -> gr.Blocks:
     _load_el_voices()  # pre-load at startup
 
     with gr.Blocks(theme=gr.themes.Base()) as app:
@@ -181,31 +168,10 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
             js="() => {const params = new URLSearchParams(window.location.search);if (!params.has('__theme')) {params.set('__theme', '%s');window.location.search = params.toString();}}" % theme,
         )
 
-        _TAGS = [
-            "pause", "short pause", "emphasis", "whisper", "low voice", "loud", "volume up", "volume down",
-            "laughing", "chuckle", "chuckling", "laughing tone", "audience laughter", "excited", "excited tone", "delight",
-            "singing", "inhale", "exhale", "sigh", "panting", "clearing throat", "tsk", "moaning",
-            "angry", "sad", "shocked", "surprised", "screaming", "shouting", "interrupting", "with strong accent",
-            "echo", "low volume",
-        ]
-
         with gr.Row():
             # ── Left ──────────────────────────────────────────────────────────
             with gr.Column(scale=3):
-                text = gr.Textbox(label=i18n("Input Text"), placeholder=TEXTBOX_PLACEHOLDER, lines=10, elem_id="text-input")
-
-                with gr.Row():
-                    enhance_btn = gr.Button("✨ Enhance Input", variant="secondary", scale=1)
-                    enhance_status = gr.HTML("", visible=True)
-
-                with gr.Accordion("🏷️ Inline Tags — click to insert at cursor", open=False):
-                    tag_buttons = []
-                    rows = [_TAGS[i:i+8] for i in range(0, len(_TAGS), 8)]
-                    for row in rows:
-                        with gr.Row():
-                            for tag in row:
-                                btn = gr.Button(f"[{tag}]", size="sm")
-                                tag_buttons.append((btn, tag))
+                text = gr.Textbox(label="Input Text", placeholder=TEXTBOX_PLACEHOLDER, lines=10, elem_id="text-input")
 
                 with gr.Row():
                     with gr.Column():
@@ -256,25 +222,8 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
                             save_status    = gr.Markdown("")
                             saved_id_box   = gr.Textbox(label="Voice ID (copy to reuse across sessions)", interactive=False, visible=False)
 
-                        with gr.Tab(label="Advanced Config"):
-                            with gr.Row():
-                                chunk_length = gr.Slider(label="Iterative Prompt Length (0=off)", minimum=100, maximum=400, value=300, step=8)
-                                max_new_tokens = gr.Slider(label="Max tokens per batch (0=auto)", minimum=0, maximum=4096, value=0, step=8)
-                            with gr.Row():
-                                top_p = gr.Slider(label="Top-P", minimum=0.7, maximum=0.95, value=0.8, step=0.01)
-                                repetition_penalty = gr.Slider(label="Repetition Penalty", minimum=1, maximum=1.2, value=1.1, step=0.01)
-                            with gr.Row():
-                                temperature = gr.Slider(label="Temperature", minimum=0.7, maximum=1.0, value=0.8, step=0.01)
-                                seed = gr.Number(label="Seed (0=random)", value=0)
-
             # ── Right ─────────────────────────────────────────────────────────
             with gr.Column(scale=3):
-                model_toggle = gr.Radio(
-                    label="Model",
-                    choices=["Fish Speech S2 Pro", "OmniVoice"],
-                    value="Fish Speech S2 Pro",
-                    info="OmniVoice: lightweight 600+ language zero-shot cloning (lazy-loaded on first use)",
-                )
                 error = gr.HTML(label="Error", visible=True)
                 audio = gr.Audio(label="Generated Audio", type="numpy", interactive=False)
                 generate = gr.Button("🎧 Generate", variant="primary")
@@ -282,9 +231,6 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
         # ── Events ────────────────────────────────────────────────────────────
 
         current_voice_meta = gr.State({})
-
-        # Enhance input — uses active voice profile if available
-        enhance_btn.click(enhance_text, [text, current_voice_meta], [text, enhance_status])
 
         # Auto-transcribe on upload
         reference_audio.change(transcribe_audio, [reference_audio], [reference_text])
@@ -323,35 +269,10 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
             [save_status, saved_id_box],
         )
 
-        # Tag insertion — JS handles cursor position, Python just passes through
-        for btn, tag in tag_buttons:
-            btn.click(
-                fn=None,
-                inputs=[text],
-                outputs=[text],
-                js=f"""(t) => {{
-                    const el = document.querySelector('#text-input textarea');
-                    if (el) {{
-                        const s = el.selectionStart ?? t.length;
-                        const e = el.selectionEnd ?? s;
-                        const v = t.slice(0, s) + '[{tag}]' + t.slice(e);
-                        el.value = v;
-                        el.selectionStart = el.selectionEnd = s + {len(tag) + 2};
-                        el.dispatchEvent(new Event('input', {{bubbles: true}}));
-                        return [v];
-                    }}
-                    return [t + ' [{tag}]'];
-                }}""",
-            )
-
-        use_memory_cache = gr.State("on")
-
         # Generate
         generate.click(
             inference_fct,
-            [text, reference_id, reference_audio, reference_text,
-             max_new_tokens, chunk_length, top_p, repetition_penalty,
-             temperature, seed, use_memory_cache, model_toggle],
+            [text, reference_audio, reference_text],
             [audio, error],
             concurrency_limit=1,
         )

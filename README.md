@@ -1,6 +1,6 @@
 # Voice Clone
 
-A production-ready voice cloning API and web UI built on top of [Fish Speech S2 Pro](https://huggingface.co/fishaudio/s2-pro), with a 10,000+ voice gallery sourced from ElevenLabs shared voices.
+A production-ready voice cloning API and web UI powered by [OmniVoice](https://huggingface.co/k2-fsa/OmniVoice) — lightweight 600+ language zero-shot voice cloning, with a 10,000+ voice gallery sourced from ElevenLabs shared voices.
 
 ---
 
@@ -13,9 +13,9 @@ A production-ready voice cloning API and web UI built on top of [Fish Speech S2 
 - **Gradio WebUI** — browser-based interface for testing
 - **Voice library** — save and manage custom voices
 - **LRU cache** — repeated calls to the same voice skip download + transcription
-- **Optimised inference** — `torch.compile`, TF32 tensor cores, cuDNN benchmark
-- **LLM prosody tagger** — llama.cpp server (CPU) with any GGUF model annotates text with `[pause]`, `[emphasis]`, etc. before synthesis
-- **Auto max tokens** — output token budget estimated from input character count automatically
+- **600+ languages** — OmniVoice supports zero-shot cloning across 600+ languages
+- **Lightweight** — model weights auto-download on first use, no large checkpoint required
+- **Prosody tagger** — embedding-based classifier annotates text with `[pause]`, `[emphasis]`, etc. before synthesis
 
 ---
 
@@ -24,13 +24,8 @@ A production-ready voice cloning API and web UI built on top of [Fish Speech S2 
 ### Requirements
 
 - Python 3.11
-- CUDA GPU with 24GB VRAM (tested on RTX 3090 — Ampere sm86, CUDA 12.1)
+- CUDA GPU (tested on RTX 3090 — Ampere sm86, CUDA 12.1)
 - 32GB+ system RAM
-- ~80GB disk:
-  - Fish Speech S2 Pro: ~11GB (safetensors + codec)
-  - GGUF LLM (`Qwen2.5-1.5B-Instruct-abliterated Q4_K_M`): ~940MB, ~1GB disk
-  - llama.cpp build + Python env: ~10GB
-  - Voices/cache: varies
 - CUDA driver 535+ (CUDA 12.2 runtime, toolkit 12.1)
 
 ### Install
@@ -38,17 +33,13 @@ A production-ready voice cloning API and web UI built on top of [Fish Speech S2 
 Everything is handled by `init.sh`:
 
 ```bash
-# 1. Full install (deps, Fish Speech, model download, cloudflared, custom files)
+# 1. Full install (deps, OmniVoice, cloudflared, custom files)
 bash init.sh install
 
-# 2. Build llama.cpp with CUDA (for the prosody tagger LLM)
+# 2. (Optional) Build llama.cpp with CUDA
 bash init.sh llamacpp
 
-# 3. Download a GGUF model
-mkdir -p /root/models
-wget -P /root/models/ https://huggingface.co/mradermacher/Qwen2.5-1.5B-Instruct-abliterated-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-abliterated.Q4_K_M.gguf
-
-# 4. Launch
+# 3. Launch
 bash init.sh start
 ```
 
@@ -63,18 +54,17 @@ bash init.sh pull
 
 | Command | Description |
 |---------|-------------|
-| `install` | Full first-time install (deps, env, checkpoints, cloudflared, custom files) |
+| `install` | Full first-time install (deps, env, cloudflared, custom files) |
 | `llamacpp` | Build llama.cpp with CUDA support |
-| `start` | Kill and restart all services (applies Ampere patches, starts webui + llama + cloudflared) |
+| `start` | Kill and restart all services (starts webui + cloudflared) |
 | `pull` | Pull latest custom files from GitHub then restart |
 | `auto` *(default)* | Install if not installed, pull latest files, then start |
 
 **Key Python deps** (installed by `init.sh install`):
 - `torch==2.5.1+cu121` / `torchaudio` — pinned for CUDA 12.1 / RTX 3090
-- `faster-whisper` — CPU transcription (preserves all VRAM for Fish Speech)
-- `descript-audio-codec`, `descript-audiotools` — DAC codec
+- `omnivoice` — zero-shot voice cloning engine
+- `faster-whisper` — CPU transcription
 - `gradio>5.0`, `uvicorn`, `fastapi` — WebUI + REST API
-- `huggingface_hub` — model download
 
 ### Fetch ElevenLabs voice metadata
 
@@ -97,10 +87,7 @@ python fetch_el_metadata.py
 cd /root/fish-speech
 source /root/fish-env/bin/activate
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-python tools/run_webui.py \
-  --llama-checkpoint-path checkpoints/s2-pro \
-  --decoder-checkpoint-path checkpoints/s2-pro/codec.pth \
-  --compile
+python tools/run_webui.py
 ```
 
 Gradio UI: `http://localhost:7860`
@@ -165,13 +152,7 @@ Generate audio from a voice ID and text prompt. Reference audio and transcriptio
 ```json
 {
   "voice_id": "rm143ZlE6RfHtN634wZ8",
-  "text": "Your text to synthesise goes here.",
-  "temperature": 0.8,
-  "top_p": 0.8,
-  "repetition_penalty": 1.1,
-  "chunk_length": 300,
-  "max_new_tokens": 0,
-  "seed": 0
+  "text": "Your text to synthesise goes here."
 }
 ```
 
@@ -188,43 +169,6 @@ curl -X POST "http://localhost:7860/generate" \
   -d '{"voice_id": "rm143ZlE6RfHtN634wZ8", "text": "Hello, this is a test."}' \
   --output output.wav
 ```
-
----
-
-## Changes from upstream fish-speech
-
-### `tools/run_webui.py`
-- Replaced `app.launch()` with FastAPI + `gr.mount_gradio_app` so REST API and Gradio share one port
-- Added `--compile` flag; VQ-GAN decoder is also compiled when `--compile` is set
-- Enabled `torch.backends.cudnn.benchmark` and TF32 tensor cores
-- Sets `TORCHINDUCTOR_CACHE_DIR` to persist compiled kernels across restarts
-- Calls `init_api(inference_engine)` to share the loaded model with the API
-
-### `tools/fish_api.py` *(new file)*
-- `GET /gallery` — searches `el_voices.json` + saved voices with filtering and pagination
-- `POST /generate` — resolves voice_id → fetches preview on-demand → Whisper transcription → prosody tagging → TTS inference → returns WAV
-- LRU cache (500 voices) for audio bytes + transcription to avoid redundant downloads
-- Prosody tagger calls local llama.cpp server to annotate text before synthesis
-- Whisper runs on CPU (`int8`) to keep all VRAM available for Fish Speech
-
-### `tools/webui/__init__.py`
-- Added **Voice Gallery** tab: searchable/filterable dropdown over 10,790 ElevenLabs voices, loads preview on-demand
-- Added **My Saved Voices** tab: save/load/delete custom voices with name, description, publish flag
-- Auto-transcription: `reference_audio.change` → Whisper → populates reference text field automatically
-- `app.load()` refresh on page load so saved voices always reflect current state
-
-### `tools/webui/variables.py`
-- Updated header to say **Fish Speech S2 Pro** with correct HuggingFace link
-
-### `fetch_el_metadata.py` *(new file)*
-- Paginates ElevenLabs `/v1/shared-voices` API and saves slim metadata JSON
-- Reads API key from `EL_API_KEY` environment variable
-- No audio downloaded — purely metadata (name, description, gender, age, accent, language, preview_url)
-
-### `init.sh` *(replaces individual .sh scripts)*
-- Consolidates `fish_install_3090.sh`, `fish_install_llamacpp.sh`, `fish_patch_ampere.sh`, `fish_start_3090.sh`, `fishwebui_launch.sh`, `start_cloudflared.sh`
-- Ampere GPU patches applied on every start (FlashAttention, `dynamic=True` compile, in-place op fixes)
-- `pull` subcommand fetches latest custom files from GitHub before restarting
 
 ---
 
