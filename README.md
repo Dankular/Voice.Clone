@@ -1,11 +1,12 @@
 # Voice Clone
 
-A production-ready voice cloning API and web UI built on top of [Fish Speech S2 Pro](https://huggingface.co/fishaudio/s2-pro), with a 10,000+ voice gallery sourced from ElevenLabs shared voices.
+A production-ready voice cloning API and web UI built on top of [Fish Speech S2 Pro](https://huggingface.co/fishaudio/s2-pro) and [OmniVoice](https://huggingface.co/spaces/k2-fsa/OmniVoice), with a 10,000+ voice gallery sourced from ElevenLabs shared voices.
 
 ---
 
 ## Features
 
+- **Model toggle** — switch between **Fish Speech S2 Pro** and **OmniVoice** (lightweight 600+ language zero-shot cloning) via a single radio button
 - **10,790+ voice gallery** — all ElevenLabs public shared voices, searchable and filterable by language, gender, age, accent
 - **Zero storage** — voice metadata only (~2MB JSON), previews fetched on-demand
 - **Auto-transcription** — Whisper (CPU) automatically transcribes reference audio, no manual input needed
@@ -14,7 +15,7 @@ A production-ready voice cloning API and web UI built on top of [Fish Speech S2 
 - **Voice library** — save and manage custom voices
 - **LRU cache** — repeated calls to the same voice skip download + transcription
 - **Optimised inference** — `torch.compile`, TF32 tensor cores, cuDNN benchmark
-- **LLM prosody tagger** — llama.cpp server (CPU) with any GGUF model annotates text with `[pause]`, `[emphasis]`, etc. before synthesis
+- **Prosody tagger** — sentence-transformers embedding classifier annotates text with `[pause]`, `[emphasis]`, etc. before synthesis
 - **Auto max tokens** — output token budget estimated from input character count automatically
 
 ---
@@ -71,7 +72,9 @@ bash init.sh pull
 
 **Key Python deps** (installed by `init.sh install`):
 - `torch==2.5.1+cu121` / `torchaudio` — pinned for CUDA 12.1 / RTX 3090
+- `omnivoice` — lightweight zero-shot voice cloning (installed `--no-deps`, lazy-loaded on first use)
 - `faster-whisper` — CPU transcription (preserves all VRAM for Fish Speech)
+- `sentence-transformers` — prosody tag classifier (`all-MiniLM-L6-v2`)
 - `descript-audio-codec`, `descript-audiotools` — DAC codec
 - `gradio>5.0`, `uvicorn`, `fastapi` — WebUI + REST API
 - `huggingface_hub` — model download
@@ -166,6 +169,7 @@ Generate audio from a voice ID and text prompt. Reference audio and transcriptio
 {
   "voice_id": "rm143ZlE6RfHtN634wZ8",
   "text": "Your text to synthesise goes here.",
+  "model": "fish-speech",
   "temperature": 0.8,
   "top_p": 0.8,
   "repetition_penalty": 1.1,
@@ -175,6 +179,10 @@ Generate audio from a voice ID and text prompt. Reference audio and transcriptio
 }
 ```
 
+| Field | Default | Description |
+|-------|---------|-------------|
+| `model` | `"fish-speech"` | `"fish-speech"` or `"omnivoice"` — selects the TTS backend |
+
 **Response:** `audio/wav` binary stream with header `Content-Disposition: attachment; filename="output.wav"`
 
 **Example:**
@@ -182,11 +190,17 @@ Generate audio from a voice ID and text prompt. Reference audio and transcriptio
 # Step 1 — find a voice
 curl "http://localhost:7860/gallery?search=husky&language=en&gender=male&limit=3"
 
-# Step 2 — generate with that voice_id
+# Step 2 — generate with Fish Speech (default)
 curl -X POST "http://localhost:7860/generate" \
   -H "Content-Type: application/json" \
   -d '{"voice_id": "rm143ZlE6RfHtN634wZ8", "text": "Hello, this is a test."}' \
   --output output.wav
+
+# Step 3 — or generate with OmniVoice
+curl -X POST "http://localhost:7860/generate" \
+  -H "Content-Type: application/json" \
+  -d '{"voice_id": "rm143ZlE6RfHtN634wZ8", "text": "Hello, this is a test.", "model": "omnivoice"}' \
+  --output output_omni.wav
 ```
 
 ---
@@ -203,11 +217,13 @@ curl -X POST "http://localhost:7860/generate" \
 ### `tools/fish_api.py` *(new file)*
 - `GET /gallery` — searches `el_voices.json` + saved voices with filtering and pagination
 - `POST /generate` — resolves voice_id → fetches preview on-demand → Whisper transcription → prosody tagging → TTS inference → returns WAV
+- Supports `model` field to route between Fish Speech and OmniVoice
 - LRU cache (500 voices) for audio bytes + transcription to avoid redundant downloads
-- Prosody tagger calls local llama.cpp server to annotate text before synthesis
-- Whisper runs on CPU (`int8`) to keep all VRAM available for Fish Speech
+- Prosody tagger uses sentence-transformers embedding classifier to annotate text before synthesis
+- Whisper runs on CPU (`int8`) to keep all VRAM available for TTS
 
 ### `tools/webui/__init__.py`
+- Added **Model toggle** (Radio: Fish Speech S2 Pro / OmniVoice) — switches TTS backend at generation time
 - Added **Voice Gallery** tab: searchable/filterable dropdown over 10,790 ElevenLabs voices, loads preview on-demand
 - Added **My Saved Voices** tab: save/load/delete custom voices with name, description, publish flag
 - Auto-transcription: `reference_audio.change` → Whisper → populates reference text field automatically
@@ -235,6 +251,20 @@ Users can save any voice (from gallery or uploaded audio) to a local library:
 - Saved to `voices/{uuid}/` with `audio.{ext}` + `meta.json`
 - Accessible via the **My Saved Voices** tab in the WebUI or `source=saved` in `/gallery`
 - `published` flag controls visibility
+
+---
+
+## OmniVoice
+
+[OmniVoice](https://huggingface.co/spaces/k2-fsa/OmniVoice) is a lightweight zero-shot voice cloning model supporting 600+ languages, built on Qwen3-0.6B. It serves as an alternative to Fish Speech S2 Pro with a smaller footprint.
+
+- **Lazy-loaded** — model weights download from HuggingFace on first use, no VRAM consumed until selected
+- **Same voice pipeline** — works with all ElevenLabs gallery voices, uploaded audio, and saved voices
+- **Voice cloning** — pass reference audio + text, just like Fish Speech
+- **Auto voice** — generates without reference audio if none is provided
+- **24 kHz output** — WAV at 24 kHz sample rate
+
+Toggle between models using the **Radio button** in the WebUI or the `"model": "omnivoice"` field in the API.
 
 ---
 
