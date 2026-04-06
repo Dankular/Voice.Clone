@@ -6,6 +6,7 @@ A production-ready voice cloning API and web UI powered by [OmniVoice](https://h
 
 ## Features
 
+- **Model toggle** — switch between **Fish Speech S2 Pro** and **OmniVoice** (lightweight 600+ language zero-shot cloning) via a single radio button
 - **10,790+ voice gallery** — all ElevenLabs public shared voices, searchable and filterable by language, gender, age, accent
 - **Zero storage** — voice metadata only (~2MB JSON), previews fetched on-demand
 - **Auto-transcription** — Whisper (CPU) automatically transcribes reference audio, no manual input needed
@@ -64,6 +65,10 @@ bash init.sh pull
 - `torch==2.5.1+cu121` / `torchaudio` — pinned for CUDA 12.1 / RTX 3090
 - `omnivoice` — zero-shot voice cloning engine
 - `faster-whisper` — CPU transcription
+- `omnivoice` — lightweight zero-shot voice cloning (installed `--no-deps`, lazy-loaded on first use)
+- `faster-whisper` — CPU transcription (preserves all VRAM for Fish Speech)
+- `sentence-transformers` — prosody tag classifier (`all-MiniLM-L6-v2`)
+- `descript-audio-codec`, `descript-audiotools` — DAC codec
 - `gradio>5.0`, `uvicorn`, `fastapi` — WebUI + REST API
 
 ### Fetch ElevenLabs voice metadata
@@ -153,8 +158,20 @@ Generate audio from a voice ID and text prompt. Reference audio and transcriptio
 {
   "voice_id": "rm143ZlE6RfHtN634wZ8",
   "text": "Your text to synthesise goes here."
+  "text": "Your text to synthesise goes here.",
+  "model": "fish-speech",
+  "temperature": 0.8,
+  "top_p": 0.8,
+  "repetition_penalty": 1.1,
+  "chunk_length": 300,
+  "max_new_tokens": 0,
+  "seed": 0
 }
 ```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `model` | `"fish-speech"` | `"fish-speech"` or `"omnivoice"` — selects the TTS backend |
 
 **Response:** `audio/wav` binary stream with header `Content-Disposition: attachment; filename="output.wav"`
 
@@ -163,11 +180,17 @@ Generate audio from a voice ID and text prompt. Reference audio and transcriptio
 # Step 1 — find a voice
 curl "http://localhost:7860/gallery?search=husky&language=en&gender=male&limit=3"
 
-# Step 2 — generate with that voice_id
+# Step 2 — generate with Fish Speech (default)
 curl -X POST "http://localhost:7860/generate" \
   -H "Content-Type: application/json" \
   -d '{"voice_id": "rm143ZlE6RfHtN634wZ8", "text": "Hello, this is a test."}' \
   --output output.wav
+
+# Step 3 — or generate with OmniVoice
+curl -X POST "http://localhost:7860/generate" \
+  -H "Content-Type: application/json" \
+  -d '{"voice_id": "rm143ZlE6RfHtN634wZ8", "text": "Hello, this is a test.", "model": "omnivoice"}' \
+  --output output_omni.wav
 ```
 
 ---
@@ -179,6 +202,20 @@ Users can save any voice (from gallery or uploaded audio) to a local library:
 - Saved to `voices/{uuid}/` with `audio.{ext}` + `meta.json`
 - Accessible via the **My Saved Voices** tab in the WebUI or `source=saved` in `/gallery`
 - `published` flag controls visibility
+
+---
+
+## OmniVoice
+
+[OmniVoice](https://huggingface.co/spaces/k2-fsa/OmniVoice) is a lightweight zero-shot voice cloning model supporting 600+ languages, built on Qwen3-0.6B. It serves as an alternative to Fish Speech S2 Pro with a smaller footprint.
+
+- **Lazy-loaded** — model weights download from HuggingFace on first use, no VRAM consumed until selected
+- **Same voice pipeline** — works with all ElevenLabs gallery voices, uploaded audio, and saved voices
+- **Voice cloning** — pass reference audio + text, just like Fish Speech
+- **Auto voice** — generates without reference audio if none is provided
+- **24 kHz output** — WAV at 24 kHz sample rate
+
+Toggle between models using the **Radio button** in the WebUI or the `"model": "omnivoice"` field in the API.
 
 ---
 
