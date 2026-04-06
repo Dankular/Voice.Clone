@@ -269,6 +269,12 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
 
             # ── Right ─────────────────────────────────────────────────────────
             with gr.Column(scale=3):
+                model_toggle = gr.Radio(
+                    label="Model",
+                    choices=["Fish Speech S2 Pro", "OmniVoice"],
+                    value="Fish Speech S2 Pro",
+                    info="OmniVoice: lightweight 600+ language zero-shot cloning (lazy-loaded on first use)",
+                )
                 error = gr.HTML(label="Error", visible=True)
                 audio = gr.Audio(label="Generated Audio", type="numpy", interactive=False)
                 generate = gr.Button("🎧 Generate", variant="primary")
@@ -345,7 +351,7 @@ def build_app(inference_fct: Callable, theme: str = "light") -> gr.Blocks:
             inference_fct,
             [text, reference_id, reference_audio, reference_text,
              max_new_tokens, chunk_length, top_p, repetition_penalty,
-             temperature, seed, use_memory_cache],
+             temperature, seed, use_memory_cache, model_toggle],
             [audio, error],
             concurrency_limit=1,
         )
