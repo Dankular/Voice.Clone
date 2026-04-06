@@ -52,6 +52,9 @@ install_base() {
         descript-audio-codec descript-audiotools fastapi \
         sentence-transformers
 
+    # OmniVoice — lightweight zero-shot voice cloning (--no-deps to preserve our torch/transformers)
+    pip install omnivoice --no-deps
+
     # S2 Pro checkpoints (~11 GB)
     mkdir -p /root/fish-speech/checkpoints
     if [ ! -f /root/fish-speech/checkpoints/s2-pro/codec.pth ]; then
@@ -91,6 +94,7 @@ snapshot_download(repo_id='fishaudio/s2-pro', local_dir='/root/fish-speech/check
     echo ""
     echo "=== Install complete ==="
     echo "Tag classifier uses sentence-transformers (auto-downloaded on first run)."
+    echo "OmniVoice model weights download automatically on first use."
     echo "Optional: ./init.sh llamacpp   (builds llama.cpp for other LLM uses)"
     echo "Next: ./init.sh start"
 }

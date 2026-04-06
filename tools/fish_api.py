@@ -151,6 +151,23 @@ def _estimate_max_tokens(text: str) -> int:
     return max(512, min(4096, len(text) * 10))
 
 
+def _run_omnivoice_inference(text: str, audio_path: str, transcription: str) -> tuple[int, np.ndarray]:
+    """Run inference via OmniVoice (lazy-loaded)."""
+    from tools.webui.inference import _get_omnivoice
+
+    model = _get_omnivoice()
+
+    kwargs = {"text": text}
+    if audio_path:
+        kwargs["ref_audio"] = audio_path
+        if transcription:
+            kwargs["ref_text"] = transcription
+
+    audio_tensors = model.generate(**kwargs)
+    wav = audio_tensors[0].cpu().numpy().squeeze()
+    return 24000, wav.astype(np.float32)
+
+
 def _run_inference(text: str, audio_path: str, transcription: str, **kwargs) -> tuple[int, np.ndarray]:
     from fish_speech.utils.schema import ServeReferenceAudio, ServeTTSRequest
 
@@ -243,6 +260,7 @@ def gallery(
 class GenerateRequest(BaseModel):
     voice_id: str
     text: str
+    model: str = "fish-speech"  # "fish-speech" or "omnivoice"
     max_new_tokens: int = 0
     chunk_length: int = 300
     top_p: float = 0.8
@@ -254,10 +272,7 @@ class GenerateRequest(BaseModel):
 
 @router.post("/generate")
 def generate(req: GenerateRequest):
-    if _inference_engine is None:
-        raise HTTPException(503, "Inference engine not ready")
-
-    logger.info(f"API /generate: voice_id={req.voice_id}, text={req.text[:60]}")
+    logger.info(f"API /generate: model={req.model}, voice_id={req.voice_id}, text={req.text[:60]}")
 
     # Resolve voice metadata for tagger
     el_voices = _load_el_voices()
@@ -276,22 +291,29 @@ def generate(req: GenerateRequest):
         cleanup = True
 
     try:
-        result = _run_inference(
-            text=tagged_text,
-            audio_path=audio_path,
-            transcription=transcription,
-            max_new_tokens=req.max_new_tokens,
-            chunk_length=req.chunk_length,
-            top_p=req.top_p,
-            repetition_penalty=req.repetition_penalty,
-            temperature=req.temperature,
-            seed=req.seed,
-        )
+        if req.model == "omnivoice":
+            sample_rate, audio_data = _run_omnivoice_inference(
+                text=tagged_text,
+                audio_path=audio_path,
+                transcription=transcription,
+            )
+        else:
+            if _inference_engine is None:
+                raise HTTPException(503, "Fish Speech inference engine not ready")
+            sample_rate, audio_data = _run_inference(
+                text=tagged_text,
+                audio_path=audio_path,
+                transcription=transcription,
+                max_new_tokens=req.max_new_tokens,
+                chunk_length=req.chunk_length,
+                top_p=req.top_p,
+                repetition_penalty=req.repetition_penalty,
+                temperature=req.temperature,
+                seed=req.seed,
+            )
     finally:
         if cleanup:
             Path(audio_path).unlink(missing_ok=True)
-
-    sample_rate, audio_data = result
 
     # Encode to WAV in memory
     buf = io.BytesIO()
